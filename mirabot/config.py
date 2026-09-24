@@ -36,6 +36,19 @@ class TradeParams:
 
 
 @dataclass
+class OptionParams:
+    enabled: bool = True
+    target_delta: float = 0.65          # in-the-money-ish call: less theta decay, tracks the stock
+    target_dte: int = 45                # monthly expiry nearest 45 days, so a 15-day swing
+    min_dte: int = 30                   # never spends its last, fastest-decaying weeks
+    iv_mult: float = 1.15               # implied vol usually trades above realised vol
+    vol_floor: float = 0.15
+    vol_cap: float = 1.50
+    half_spread: float = 0.025          # paid on entry and exit (fraction of mid)
+    rate: float = 0.04                  # risk-free rate for Black-Scholes
+
+
+@dataclass
 class EdgeParams:
     min_trades: int = 12                # smallest bucket reported as a rule
     train_frac: float = 0.6             # first 60% of the window discovers, last 40% validates
@@ -49,4 +62,5 @@ class Config:
     insider: InsiderParams = field(default_factory=InsiderParams)
     flow: FlowParams = field(default_factory=FlowParams)
     trade: TradeParams = field(default_factory=TradeParams)
+    options: OptionParams = field(default_factory=OptionParams)
     edge: EdgeParams = field(default_factory=EdgeParams)

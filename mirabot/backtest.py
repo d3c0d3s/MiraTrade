@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from mirabot.config import Config
+from mirabot.options_trades import realized_vol, simulate_option
 from mirabot.signals.insider import insider_features
 from mirabot.signals.options_flow import flow_features, unusual_prints
 from mirabot.signals.technical import SETUPS, detect_setups, indicators
@@ -28,6 +29,7 @@ def build_panel(prices: dict[str, pd.DataFrame], insiders: pd.DataFrame, flow: p
         if len(df) < 60:
             continue
         ind = indicators(df)
+        ind["rv20"] = realized_vol(ind["close"])
         ind = ind.join(detect_setups(ind).add_prefix("setup_").astype(float))
         ind = ind.join(insider_features(insiders, ind.index, t, cfg.insider))
         ind = ind.join(flow_features(unusual, ind.index, t, cfg.flow))
@@ -116,5 +118,7 @@ def run_trades(panel: dict[str, pd.DataFrame], start: pd.Timestamp | None = None
                 continue
             busy_until = ind.index.get_loc(trade["exit_date"])
             row = ind.iloc[i]
+            if cfg.options.enabled and np.isfinite(row.get("rv20", np.nan)):
+                trade.update(simulate_option(trade, row["rv20"], cfg.options))
             rows.append({"ticker": t, "signal_date": ind.index[i], **trade, **conditions(row)})
     return pd.DataFrame(rows)

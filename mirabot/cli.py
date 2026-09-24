@@ -22,11 +22,20 @@ def pipeline(prices: dict, insiders: pd.DataFrame, flow: pd.DataFrame, start: pd
         rules, baseline = pd.DataFrame(), None
     else:
         rules, baseline = mine_rules(trades, cfg.edge)
-    candidates = scan(panel, rules, cfg.trade) if not rules.empty else pd.DataFrame()
+    candidates = scan(panel, rules, cfg.trade, cfg.options) if not rules.empty else pd.DataFrame()
+    opt = None
+    if cfg.options.enabled and "opt_r" in trades:
+        opt_trades = trades.dropna(subset=["opt_r"]).assign(r=lambda d: d["opt_r"])
+        opt_rules, opt_base = mine_rules(opt_trades, cfg.edge)
+        opt_shown = (prune_redundant(opt_rules[opt_rules["validated"]], top=10)
+                     if not opt_rules.empty and opt_rules["validated"].any() else pd.DataFrame())
+        opt = {"trades": opt_trades, "rules": opt_rules, "shown": opt_shown, "baseline": opt_base}
 
     out_dir.mkdir(parents=True, exist_ok=True)
     trades.to_csv(out_dir / "trades.csv", index=False)
     rules.to_csv(out_dir / "rules.csv", index=False)
+    if opt is not None:
+        opt["rules"].to_csv(out_dir / "rules_options.csv", index=False)
     candidates.to_csv(out_dir / "candidates.csv", index=False)
     if baseline is None:
         (out_dir / "edge_report.md").write_text("# MiraBot edge report\n\nNo trades generated.\n")
@@ -38,9 +47,10 @@ def pipeline(prices: dict, insiders: pd.DataFrame, flow: pd.DataFrame, start: pd
             "max_hold": cfg.trade.max_hold_days, "min_lift_r": cfg.edge.min_lift_r}
     validated = rules[rules["validated"]] if not rules.empty else rules
     shown = prune_redundant(validated, top=10) if len(validated) else validated
-    report = render(trades, rules, shown, baseline, candidates, meta)
+    report = render(trades, rules, shown, baseline, candidates, meta, opt)
     (out_dir / "edge_report.md").write_text(report)
-    return {"trades": trades, "rules": rules, "candidates": candidates, "report": report}
+    return {"trades": trades, "rules": rules, "candidates": candidates, "report": report,
+            "options": opt}
 
 
 def cmd_analyze(a) -> None:

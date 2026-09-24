@@ -109,7 +109,7 @@ def prune_redundant(rules: pd.DataFrame, top: int = 10) -> pd.DataFrame:
     return out.sort_values("score", ascending=False).head(top) if len(out) else out
 
 
-def scan(panel: dict[str, pd.DataFrame], rules: pd.DataFrame, cfg_trade) -> pd.DataFrame:
+def scan(panel: dict[str, pd.DataFrame], rules: pd.DataFrame, cfg_trade, cfg_options=None) -> pd.DataFrame:
     """Apply validated rules to each ticker's latest bar: today's trade candidates.
 
     Only bars that would have produced a trade in the backtest (an entry trigger) qualify, so
@@ -131,10 +131,17 @@ def scan(panel: dict[str, pd.DataFrame], rules: pd.DataFrame, cfg_trade) -> pd.D
             continue
         best = max(hits, key=lambda r: r.test_avg_r)
         px = row["close"]
-        out.append({"ticker": t, "date": ind.index[-1].date(), "close": round(px, 2),
-                    "stop": round(px - cfg_trade.stop_atr * row["atr"], 2),
-                    "target": round(px + cfg_trade.target_atr * row["atr"], 2),
-                    "rules_matched": len(hits), "best_rule": best.rule,
-                    "best_rule_test_avg_r": round(best.test_avg_r, 2)})
+        cand = {"ticker": t, "date": ind.index[-1].date(), "close": round(px, 2),
+                "stop": round(px - cfg_trade.stop_atr * row["atr"], 2),
+                "target": round(px + cfg_trade.target_atr * row["atr"], 2),
+                "rules_matched": len(hits), "best_rule": best.rule,
+                "best_rule_test_avg_r": round(best.test_avg_r, 2)}
+        if cfg_options is not None and cfg_options.enabled and np.isfinite(row.get("rv20", np.nan)):
+            from mirabot.options_trades import option_contract
+
+            c = option_contract(px, ind.index[-1].date(), row["rv20"], cfg_options)
+            cand.update({"call": f"{t} {c['expiry']:%Y-%m-%d} {c['strike']:g}C",
+                         "call_delta": round(c["delta"], 2), "call_est_ask": round(c["ask"], 2)})
+        out.append(cand)
     return pd.DataFrame(out).sort_values(["rules_matched", "best_rule_test_avg_r"],
                                          ascending=False) if out else pd.DataFrame()

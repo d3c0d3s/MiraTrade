@@ -16,7 +16,8 @@ mirabot snapshot AAPL NVDA TSLA            # save today's CBOE chains (run daily
 ```
 
 Output goes to `reports/`: `edge_report.md`, `trades.csv`, `rules.csv` (every rule tested) and
-`candidates.csv` (tickers whose latest bar matches a validated rule, with entry, stop and target).
+`rules_options.csv` (the same rules measured on calls) and `candidates.csv` (tickers whose latest
+bar matches a validated rule, with entry, stop, target and a suggested call).
 
 ## Pipeline
 
@@ -27,6 +28,7 @@ Output goes to `reports/`: `edge_report.md`, `trades.csv`, `rules.csv` (every ru
 | Prices | `data/prices.py` | yfinance, falling back to Stooq; cached. |
 | Signals | `signals/` | Insider features: buy value, number of distinct buyers, clusters (2+ insiders within 10 days), CEO/CFO buys, stake increase, heavy selling. Unusual flow: premium ≥ $100k, volume/OI ≥ 1.5, ≤ 60 DTE, ≤ 15% OTM, direction from aggressor side. Setups: 20-day breakout on volume, pullback to the 20-day average in an uptrend, RSI oversold bounce. |
 | Backtest | `backtest.py` | Signal at close, entry at the next open, 1.5×ATR stop, 3×ATR target (2R), 15-bar time stop. When stop and target are both touched on the same bar, it assumes the stop. A gap fills at the open. One trade per ticker at a time. |
+| Options | `options_trades.py` | The same signal traded as a ~0.65-delta call on the monthly expiry nearest 45 days out (at least 30), with the same entry and exit dates. Priced with Black-Scholes (realised vol × 1.15, 2.5% half-spread each side). Rules are mined separately for calls, and candidates include a suggested contract. |
 | Edge | `edge.py` | Every conjunction of up to 3 conditions is tested on the first 60% of the window and validated on the last 40%. Significance is lift over the baseline, with a Benjamini-Hochberg correction for multiple testing. |
 
 Every threshold is in `mirabot/config.py`.
@@ -38,6 +40,8 @@ Every threshold is in `mirabot/config.py`.
 - **Multiple testing:** trying about 100 rules will turn up some "winners" by chance. The BH
   correction plus a separate validation period filter them out. The test suite checks that a
   pure-noise market yields no validated signal rules, and that a planted insider/flow edge is recovered.
+- **Option prices are modelled, not quoted.** Use the comparison to decide between shares and calls,
+  and check the live chain (open interest, spread, earnings date) before buying.
 - **Limits:** 90 days is one market regime. Paper-trade validated rules before sizing up. Costs and
   slippage are not modelled.
 
