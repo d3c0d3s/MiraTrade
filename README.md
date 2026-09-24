@@ -52,3 +52,24 @@ Every threshold is in `mirabot/config.py`.
   per second), so it takes a while. Everything is cached in `.cache/`.
 - Free *historical* options flow doesn't exist. Either export 90 days from a flow vendor and pass
   `--flow`, or run `mirabot snapshot` daily to build your own history.
+
+## Claude Code agents
+
+`.claude/agents/` holds 12 specialised subagents that Claude Code uses on this project:
+
+| Agent | Role |
+|---|---|
+| `investigador-cuantitativo` | Signals, rule mining, walk-forward and statistical validation |
+| `auditor-backtests` | Read-only review for look-ahead, survivorship, overfitting and cost bias |
+| `especialista-opciones` | Option pricing, greeks, strike/expiry selection, liquidity |
+| `ingeniero-datos` | SEC, price, option and vendor data sources; caching and data quality |
+| `integrador-brokers` | Schwab / TradeStation / E*TRADE APIs, OAuth, orders, simulated broker |
+| `gestor-riesgo` | Position sizing, limits, automatic mode and kill-switch review |
+| `desarrollador-escritorio` | PySide6 + Lightweight Charts Windows app, PyInstaller |
+| `disenador-ux` | Mockups, visual consistency, accessibility, flows |
+| `qa-tester` | Tests (pytest, pytest-qt), bug reproduction |
+| `devops-releases` | GitHub Actions, Windows builds, releases |
+| `auditor-seguridad` | Credentials, tokens, secrets, dependencies, order safety |
+| `tutor-trading` | Explains reports and concepts to the user in plain Spanish |
+
+To use them in every project on your own machine, copy them to `~/.claude/agents/`.
