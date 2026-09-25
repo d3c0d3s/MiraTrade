@@ -3,8 +3,8 @@ from datetime import date
 
 import pandas as pd
 
-from mirabot.config import OptionParams
-from mirabot.options_trades import (bs_delta, bs_price, monthly_expiry, option_contract,
+from miratrade.config import OptionParams
+from miratrade.options_trades import (bs_delta, bs_price, monthly_expiry, option_contract,
                                     simulate_option, strike_for_delta)
 
 

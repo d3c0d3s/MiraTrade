@@ -10,11 +10,13 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from mirabot.config import Config
-from mirabot.options_trades import realized_vol, simulate_option
-from mirabot.signals.insider import insider_features
-from mirabot.signals.options_flow import flow_features, unusual_prints
-from mirabot.signals.technical import SETUPS, detect_setups, indicators
+from miratrade.config import Config
+from miratrade.options_trades import realized_vol, simulate_option
+from miratrade.regimes import market_regimes
+from miratrade.signals.insider import insider_features
+from miratrade.signals.options_flow import flow_features, unusual_prints
+from miratrade.signals.technical import SETUPS, detect_setups, indicators
+from miratrade.survivorship import delisted_tickers
 
 
 def build_panel(prices: dict[str, pd.DataFrame], insiders: pd.DataFrame, flow: pd.DataFrame,
@@ -24,9 +26,10 @@ def build_panel(prices: dict[str, pd.DataFrame], insiders: pd.DataFrame, flow: p
     if market in prices:
         m = indicators(prices[market])
         mkt = pd.DataFrame({"mkt_up": (m["close"] > m["sma50"]).astype(float)})
+        mkt = mkt.join(market_regimes(prices[market], cfg.regime))
     panel = {}
     for t, df in prices.items():
-        if len(df) < 60:
+        if len(df) < cfg.survivorship.min_history_bars:
             continue
         ind = indicators(df)
         ind["rv20"] = realized_vol(ind["close"])
@@ -34,13 +37,16 @@ def build_panel(prices: dict[str, pd.DataFrame], insiders: pd.DataFrame, flow: p
         ind = ind.join(insider_features(insiders, ind.index, t, cfg.insider))
         ind = ind.join(flow_features(unusual, ind.index, t, cfg.flow))
         if mkt is not None:
-            ind = ind.join(mkt).fillna({"mkt_up": 0.0})
+            ind = ind.join(mkt).fillna({"mkt_up": 0.0, "mkt_trend": "unknown", "mkt_vol": "unknown"})
         panel[t] = ind
     return panel
 
 
-def simulate(ind: pd.DataFrame, i: int, cfg: Config) -> dict | None:
-    """Trade signalled on bar ``i``: enter next open, stop/target in ATRs, time stop."""
+def simulate(ind: pd.DataFrame, i: int, cfg: Config, delisted: bool = False) -> dict | None:
+    """Trade signalled on bar ``i``: enter next open, stop/target in ATRs, time stop.
+
+    ``delisted``: the ticker stopped trading at its last bar, so a trade still open there is
+    closed at that close (less ``delist_exit_haircut``) instead of being left ``open``."""
     p = cfg.trade
     if i + 1 >= len(ind) or not np.isfinite(ind["atr"].iat[i]) or ind["atr"].iat[i] <= 0:
         return None
@@ -63,7 +69,12 @@ def simulate(ind: pd.DataFrame, i: int, cfg: Config) -> dict | None:
             break
     if exit_px is None:
         exit_px, j = c[last], last
-        reason = "time" if last == i + p.max_hold_days else "open"
+        if last == i + p.max_hold_days:
+            reason = "time"
+        elif delisted:
+            exit_px, reason = c[last] * (1 - cfg.survivorship.delist_exit_haircut), "delisted"
+        else:
+            reason = "open"
     risk = entry - stop
     return {
         "entry_date": ind.index[i + 1], "exit_date": ind.index[j], "entry": entry,
@@ -107,18 +118,20 @@ def run_trades(panel: dict[str, pd.DataFrame], start: pd.Timestamp | None = None
                cfg: Config = Config()) -> pd.DataFrame:
     """Simulate every candidate; one open trade per ticker at a time."""
     rows = []
+    delisted = delisted_tickers(panel, cfg.survivorship.delist_gap_days)
     for t, ind in panel.items():
         trigger = entry_trigger(ind)
         busy_until = -1
         for i in np.flatnonzero(trigger.to_numpy()):
             if i <= busy_until or (start is not None and ind.index[i] < start):
                 continue
-            trade = simulate(ind, i, cfg)
+            trade = simulate(ind, i, cfg, delisted=t in delisted)
             if trade is None:
                 continue
             busy_until = ind.index.get_loc(trade["exit_date"])
             row = ind.iloc[i]
             if cfg.options.enabled and np.isfinite(row.get("rv20", np.nan)):
                 trade.update(simulate_option(trade, row["rv20"], cfg.options))
-            rows.append({"ticker": t, "signal_date": ind.index[i], **trade, **conditions(row)})
+            regime = {k: row.get(k, "unknown") for k in ("mkt_trend", "mkt_vol")}
+            rows.append({"ticker": t, "signal_date": ind.index[i], **trade, **regime, **conditions(row)})
     return pd.DataFrame(rows)

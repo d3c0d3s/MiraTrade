@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from mirabot.config import InsiderParams
+from miratrade.config import InsiderParams
 
 EXEC_RE = r"\b(?:CEO|CFO|COO|President|Chief Executive|Chief Financial|Chairman)\b"
 

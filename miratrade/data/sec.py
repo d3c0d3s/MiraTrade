@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from mirabot.config import CACHE_DIR, SEC_USER_AGENT
+from miratrade.config import CACHE_DIR, SEC_USER_AGENT
 
 INSIDER_COLUMNS = [
     "accession", "filing_date", "trade_date", "ticker", "issuer", "owner", "owner_cik",

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from mirabot.config import CACHE_DIR
+from miratrade.config import CACHE_DIR
 
 OHLCV = ["open", "high", "low", "close", "volume"]
 

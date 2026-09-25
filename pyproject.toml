@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mirabot"
+name = "miratrade"
 version = "0.1.0"
 description = "Swing-trade edge research: insider buying + unusual options flow + price-action setups, backtested."
 requires-python = ">=3.10"
@@ -14,10 +14,10 @@ yf = ["yfinance>=0.2.40"]
 dev = ["pytest>=7"]
 
 [project.scripts]
-mirabot = "mirabot.cli:main"
+miratrade = "miratrade.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["mirabot*"]
+include = ["miratrade*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

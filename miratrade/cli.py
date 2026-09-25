@@ -1,4 +1,4 @@
-"""Command line: ``mirabot analyze | snapshot | demo``."""
+"""Command line: ``miratrade analyze | snapshot | demo``."""
 from __future__ import annotations
 
 import argparse
@@ -7,21 +7,28 @@ from pathlib import Path
 
 import pandas as pd
 
-from mirabot.backtest import build_panel, run_trades
-from mirabot.config import Config
-from mirabot.edge import mine_rules, prune_redundant, scan
-from mirabot.report import render
-from mirabot.signals.options_flow import unusual_prints
+from miratrade.backtest import build_panel, run_trades
+from miratrade.config import Config
+from miratrade.edge import attach_walk_forward, mine_rules, prune_redundant, scan, walk_forward
+from miratrade.regimes import regime_baseline, regime_rules
+from miratrade.report import render
+from miratrade.signals.options_flow import unusual_prints
+from miratrade.survivorship import coverage
 
 
 def pipeline(prices: dict, insiders: pd.DataFrame, flow: pd.DataFrame, start: pd.Timestamp,
-             out_dir: Path, cfg: Config = Config()) -> dict:
+             out_dir: Path, cfg: Config = Config(), universe: set[str] | None = None) -> dict:
+    """``universe``: every ticker that should have been tested (default: those with prices), so
+    tickers that got no price data can be reported."""
     panel = build_panel(prices, insiders, flow, cfg)
     trades = run_trades(panel, start=start, cfg=cfg)
+    wf = None
     if trades.empty:
         rules, baseline = pd.DataFrame(), None
     else:
         rules, baseline = mine_rules(trades, cfg.edge)
+        wf = walk_forward(trades, cfg.edge)
+        rules = attach_walk_forward(rules, wf, cfg.edge)
     candidates = scan(panel, rules, cfg.trade, cfg.options) if not rules.empty else pd.DataFrame()
     opt = None
     if cfg.options.enabled and "opt_r" in trades:
@@ -37,26 +44,33 @@ def pipeline(prices: dict, insiders: pd.DataFrame, flow: pd.DataFrame, start: pd
     if opt is not None:
         opt["rules"].to_csv(out_dir / "rules_options.csv", index=False)
     candidates.to_csv(out_dir / "candidates.csv", index=False)
+    if wf is not None:
+        wf["folds"].to_csv(out_dir / "walk_forward.csv", index=False)
+    surv = coverage(universe if universe is not None else set(prices), prices, panel, insiders, flow,
+                    trades, start, cfg)
     if baseline is None:
-        (out_dir / "edge_report.md").write_text("# MiraBot edge report\n\nNo trades generated.\n")
+        (out_dir / "edge_report.md").write_text("# MiraTrade edge report\n\nNo trades generated.\n", encoding="utf-8")
         return {"trades": trades, "rules": rules, "candidates": candidates}
     end = max(df.index[-1] for df in panel.values())
     meta = {"start": start.date(), "end": end.date(), "n_tickers": len(panel),
             "n_insider": len(insiders), "n_unusual": len(unusual_prints(flow, cfg.flow)),
             "stop_atr": cfg.trade.stop_atr, "target_atr": cfg.trade.target_atr,
-            "max_hold": cfg.trade.max_hold_days, "min_lift_r": cfg.edge.min_lift_r}
+            "max_hold": cfg.trade.max_hold_days, "min_lift_r": cfg.edge.min_lift_r,
+            "min_trades": cfg.edge.min_trades}
     validated = rules[rules["validated"]] if not rules.empty else rules
     shown = prune_redundant(validated, top=10) if len(validated) else validated
-    report = render(trades, rules, shown, baseline, candidates, meta, opt)
-    (out_dir / "edge_report.md").write_text(report)
+    regimes = {"baseline": regime_baseline(trades),
+               "rules": regime_rules(trades, shown) if len(shown) else pd.DataFrame()}
+    report = render(trades, rules, shown, baseline, candidates, meta, opt, wf, regimes, surv)
+    (out_dir / "edge_report.md").write_text(report, encoding="utf-8")
     return {"trades": trades, "rules": rules, "candidates": candidates, "report": report,
-            "options": opt}
+            "options": opt, "walk_forward": wf, "regimes": regimes, "survivorship": surv}
 
 
 def cmd_analyze(a) -> None:
-    from mirabot.data.options import FLOW_COLUMNS, load_flow_csv
-    from mirabot.data.prices import load_prices, load_prices_csv
-    from mirabot.data.sec import fetch_insiders
+    from miratrade.data.options import FLOW_COLUMNS, load_flow_csv
+    from miratrade.data.prices import load_prices, load_prices_csv
+    from miratrade.data.sec import fetch_insiders
 
     end = date.fromisoformat(a.end) if a.end else date.today()
     start = end - timedelta(days=a.days)
@@ -80,20 +94,20 @@ def cmd_analyze(a) -> None:
         print(f"Loading prices for {len(universe)} tickers …")
         # 300 extra calendar days so 200-day averages exist at the window start.
         prices = load_prices(sorted(universe), start - timedelta(days=300), end + timedelta(days=1))
-    res = pipeline(prices, insiders, flow, pd.Timestamp(start), Path(a.out), cfg)
+    res = pipeline(prices, insiders, flow, pd.Timestamp(start), Path(a.out), cfg, universe=universe)
     print(res.get("report", "No trades generated."))
-    print(f"\nWrote {a.out}/edge_report.md, trades.csv, rules.csv, candidates.csv")
+    print(f"\nWrote {a.out}/edge_report.md, trades.csv, rules.csv, candidates.csv, walk_forward.csv")
 
 
 def cmd_snapshot(a) -> None:
-    from mirabot.data.options import snapshot_cboe
+    from miratrade.data.options import snapshot_cboe
 
     df = snapshot_cboe(a.tickers)
     print(f"Saved {len(df)} option rows for {df['ticker'].nunique() if len(df) else 0} tickers.")
 
 
 def cmd_demo(a) -> None:
-    from mirabot.synthetic import make_market
+    from miratrade.synthetic import make_market
 
     prices, insiders, flow = make_market()
     start = prices["SPY"].index[-90]
@@ -102,7 +116,7 @@ def cmd_demo(a) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    ap = argparse.ArgumentParser(prog="mirabot", description=__doc__)
+    ap = argparse.ArgumentParser(prog="miratrade", description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     an = sub.add_parser("analyze", help="backtest the last N days and mine an edge")

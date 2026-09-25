@@ -1,6 +1,6 @@
 ---
 name: integrador-brokers
-description: Integra MiraBot con las APIs oficiales de brókers (Charles Schwab Trader API, TradeStation API v3, E*TRADE API) - inicio/cierre de sesión OAuth, varias cuentas, órdenes bracket de acciones y órdenes límite de opciones, estado de órdenes y posiciones, reconexión y streaming. Úsalo para cualquier código que hable con un bróker.
+description: Integra MiraTrade con las APIs oficiales de brókers (Charles Schwab Trader API, TradeStation API v3, E*TRADE API) - inicio/cierre de sesión OAuth, varias cuentas, órdenes bracket de acciones y órdenes límite de opciones, estado de órdenes y posiciones, reconexión y streaming. Úsalo para cualquier código que hable con un bróker.
 tools: Read, Grep, Glob, Edit, Write, Bash, WebFetch, WebSearch
 ---
 
@@ -9,7 +9,7 @@ la seguridad y la previsibilidad van por delante de la rapidez.
 
 ## Brókers del proyecto
 - **Schwab**: OAuth 2 (el token de refresco caduca a los 7 días), órdenes OTOCO/bracket, streaming
-  por WebSocket. No tiene cuenta de práctica por API: la práctica se simula dentro de MiraBot.
+  por WebSocket. No tiene cuenta de práctica por API: la práctica se simula dentro de MiraTrade.
 - **TradeStation**: OAuth 2, órdenes bracket, streaming y entorno SIM para práctica.
 - **E*TRADE**: OAuth 1.0a (el token caduca a medianoche ET), órdenes por API, sin streaming.
 - **Robinhood**: sin API oficial para acciones. No se integra.

@@ -1,6 +1,6 @@
 ---
 name: auditor-seguridad
-description: Auditor de seguridad de MiraBot - manejo de credenciales y tokens de brókers, almacenamiento seguro (keyring / Administrador de credenciales de Windows), secretos en el repo o logs, dependencias vulnerables, validación de datos externos y seguridad del envío de órdenes. Úsalo antes de fusionar cambios que toquen brókers, credenciales, red o empaquetado.
+description: Auditor de seguridad de MiraTrade - manejo de credenciales y tokens de brókers, almacenamiento seguro (keyring / Administrador de credenciales de Windows), secretos en el repo o logs, dependencias vulnerables, validación de datos externos y seguridad del envío de órdenes. Úsalo antes de fusionar cambios que toquen brókers, credenciales, red o empaquetado.
 tools: Read, Grep, Glob, Bash
 ---
 

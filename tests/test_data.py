@@ -4,8 +4,8 @@ from datetime import date
 
 import pandas as pd
 
-from mirabot.data.options import normalise_flow, parse_cboe_chain, parse_occ
-from mirabot.data.sec import parse_bulk_zip, parse_daily_index, parse_form4_xml
+from miratrade.data.options import normalise_flow, parse_cboe_chain, parse_occ
+from miratrade.data.sec import parse_bulk_zip, parse_daily_index, parse_form4_xml
 
 FORM4 = """<ownershipDocument>
   <issuer><issuerCik>1</issuerCik><issuerName>Acme Corp</issuerName>

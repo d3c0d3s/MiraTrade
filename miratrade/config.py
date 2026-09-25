@@ -5,10 +5,10 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-CACHE_DIR = Path(os.environ.get("MIRABOT_CACHE", ".cache"))
+CACHE_DIR = Path(os.environ.get("MIRATRADE_CACHE", ".cache"))
 
 # SEC requires a descriptive User-Agent with contact info on every request.
-SEC_USER_AGENT = os.environ.get("MIRABOT_SEC_UA", "MiraBot research contact@example.com")
+SEC_USER_AGENT = os.environ.get("MIRATRADE_SEC_UA", "MiraTrade research contact@example.com")
 
 
 @dataclass
@@ -55,6 +55,25 @@ class EdgeParams:
     max_rule_size: int = 3              # combine up to 3 conditions per rule
     min_lift_r: float = 0.10            # must beat the baseline by this much in train AND test
     fdr: float = 0.10                   # Benjamini-Hochberg false discovery rate
+    wf_folds: int = 3                   # walk-forward: re-mine on all prior data, test the next slice
+    wf_min_train_frac: float = 0.4      # the first fold trains on the first 40% of trades
+
+
+@dataclass
+class RegimeParams:
+    trend_sma: int = 200                # bull/bear: SPY and its 50-day vs the 200-day average
+    trend_min_periods: int = 120
+    mid_sma: int = 50
+    vol_window: int = 20                # high/low vol: 20-day realised vol vs its trailing median
+    vol_lookback: int = 252
+    vol_min_periods: int = 60
+
+
+@dataclass
+class SurvivorshipParams:
+    min_history_bars: int = 60          # shorter price histories are dropped (and reported)
+    delist_gap_days: int = 5            # data ending this many sessions before the rest = delisted
+    delist_exit_haircut: float = 0.0    # extra loss on the last close for a delisted exit (0.3 = -30%)
 
 
 @dataclass
@@ -64,3 +83,5 @@ class Config:
     trade: TradeParams = field(default_factory=TradeParams)
     options: OptionParams = field(default_factory=OptionParams)
     edge: EdgeParams = field(default_factory=EdgeParams)
+    regime: RegimeParams = field(default_factory=RegimeParams)
+    survivorship: SurvivorshipParams = field(default_factory=SurvivorshipParams)

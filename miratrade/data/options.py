@@ -3,7 +3,7 @@
 Free historical options *flow* does not exist, so there are two inputs:
 
 * ``snapshot_cboe`` pulls CBOE's delayed end-of-day chain (volume, OI, prices). Run it daily
-  (see ``mirabot snapshot``) to build your own history in ``.cache/flow/``.
+  (see ``miratrade snapshot``) to build your own history in ``.cache/flow/``.
 * ``load_flow_csv`` imports an export from a flow vendor (Unusual Whales, Barchart,
   Cheddar Flow, etc.); column names are mapped through ``ALIASES``.
 
@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from mirabot.config import CACHE_DIR
+from miratrade.config import CACHE_DIR
 
 FLOW_COLUMNS = ["date", "ticker", "expiry", "type", "strike", "volume", "open_interest",
                 "premium", "underlying", "side"]

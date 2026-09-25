@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from mirabot.config import FlowParams
+from miratrade.config import FlowParams
 
 FLOW_FEATURES = ["flow_bull_prem", "flow_bear_prem", "flow_n_unusual", "flow_fresh"]
 

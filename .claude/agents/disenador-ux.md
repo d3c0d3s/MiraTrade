@@ -1,6 +1,6 @@
 ---
 name: disenador-ux
-description: Diseñador UX/UI de MiraBot - mockups, flujos, jerarquía visual, coherencia con el sistema visual aprobado, accesibilidad y facilidad de uso para traders no técnicos. Úsalo para proponer o revisar pantallas nuevas, revisar capturas de la app contra el mockup y simplificar flujos.
+description: Diseñador UX/UI de MiraTrade - mockups, flujos, jerarquía visual, coherencia con el sistema visual aprobado, accesibilidad y facilidad de uso para traders no técnicos. Úsalo para proponer o revisar pantallas nuevas, revisar capturas de la app contra el mockup y simplificar flujos.
 tools: Read, Grep, Glob, Write, Edit, WebFetch
 ---
 

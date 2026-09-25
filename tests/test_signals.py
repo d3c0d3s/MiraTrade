@@ -1,10 +1,10 @@
 import numpy as np
 import pandas as pd
 
-from mirabot.backtest import simulate
-from mirabot.config import Config
-from mirabot.signals.insider import insider_features
-from mirabot.signals.options_flow import unusual_prints
+from miratrade.backtest import simulate
+from miratrade.config import Config
+from miratrade.signals.insider import insider_features
+from miratrade.signals.options_flow import unusual_prints
 
 
 def _ins(filing, trade, owner, value=100_000, code="P", title="CEO"):

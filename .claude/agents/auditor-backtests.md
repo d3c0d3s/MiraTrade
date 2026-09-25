@@ -1,6 +1,6 @@
 ---
 name: auditor-backtests
-description: Revisor de solo lectura que busca sesgos en los backtests de MiraBot (uso de información futura, sesgo de supervivencia, sobreajuste, costes omitidos, errores de simulación). Úsalo de forma proactiva tras cualquier cambio en signals/, backtest.py, edge.py u options_trades.py, y antes de fiarse de un reporte.
+description: Revisor de solo lectura que busca sesgos en los backtests de MiraTrade (uso de información futura, sesgo de supervivencia, sobreajuste, costes omitidos, errores de simulación). Úsalo de forma proactiva tras cualquier cambio en signals/, backtest.py, edge.py u options_trades.py, y antes de fiarse de un reporte.
 tools: Read, Grep, Glob, Bash
 ---
 

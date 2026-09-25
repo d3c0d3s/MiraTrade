@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from mirabot.cli import pipeline
-from mirabot.edge import benjamini_hochberg
-from mirabot.synthetic import make_market
+from miratrade.cli import pipeline
+from miratrade.edge import benjamini_hochberg
+from miratrade.synthetic import make_market
 
 import pandas as pd
 
@@ -16,7 +16,7 @@ def test_recovers_planted_edge(tmp_path):
     res = _run(tmp_path, drift=0.004)
     validated = res["rules"][res["rules"]["validated"]]
     assert validated["rule"].str.contains("ins:|event:insider_buy|flow:|event:flow").any()
-    assert (tmp_path / "edge_report.md").read_text().startswith("# MiraBot edge report")
+    assert (tmp_path / "edge_report.md").read_text(encoding="utf-8").startswith("# MiraTrade edge report")
 
 
 def test_no_signal_edge_in_pure_noise(tmp_path):

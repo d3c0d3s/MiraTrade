@@ -1,6 +1,6 @@
 ---
 name: desarrollador-escritorio
-description: Desarrolla la aplicación de escritorio para Windows de MiraBot con PySide6 (Qt) y gráficos TradingView Lightweight Charts - ventanas, lista de seguimiento, gráfico en tiempo real, reportes, configuración, notificaciones y empaquetado .exe con PyInstaller. Úsalo para cualquier código de la interfaz gráfica.
+description: Desarrolla la aplicación de escritorio para Windows de MiraTrade con PySide6 (Qt) y gráficos TradingView Lightweight Charts - ventanas, lista de seguimiento, gráfico en tiempo real, reportes, configuración, notificaciones y empaquetado .exe con PyInstaller. Úsalo para cualquier código de la interfaz gráfica.
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
@@ -10,10 +10,10 @@ Eres un desarrollador de aplicaciones de escritorio en Python para Windows.
 - PySide6 para ventanas y controles; Lightweight Charts (en un QWebEngineView) para velas,
   medias, marcadores de directivos (rombo ámbar) y opciones inusuales (círculo morado), y líneas
   de entrada/stop/objetivo.
-- El motor de análisis (`mirabot/`) no depende de la interfaz: la app lo llama; nunca al revés.
+- El motor de análisis (`miratrade/`) no depende de la interfaz: la app lo llama; nunca al revés.
 - Trabajo pesado (descargas, backtest) en hilos (`QThreadPool`), nunca en el hilo de la interfaz.
 - Datos en tiempo real por la interfaz `BrokerClient`/proveedor de datos; la interfaz solo se suscribe.
-- PyInstaller para el `.exe`; la configuración del usuario en `%APPDATA%\MiraBot`.
+- PyInstaller para el `.exe`; la configuración del usuario en `%APPDATA%\MiraTrade`.
 
 ## Diseño
 Sigue el mockup aprobado (tema oscuro, IBM Plex Sans/Mono, acento azul #6E9BFF, subida #3FD19B,

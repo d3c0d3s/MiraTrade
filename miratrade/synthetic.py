@@ -1,4 +1,4 @@
-"""Synthetic market with a *planted* edge, used by tests and ``mirabot demo``.
+"""Synthetic market with a *planted* edge, used by tests and ``miratrade demo``.
 
 Insider cluster buys and bullish unusual call flow are followed by positive drift; everything
 else is a random walk. A working pipeline must rediscover those two effects out of sample.
@@ -10,7 +10,9 @@ import pandas as pd
 
 
 def make_market(n_tickers: int = 40, n_days: int = 320, seed: int = 7,
-                drift_after_signal: float = 0.004) -> tuple[dict, pd.DataFrame, pd.DataFrame]:
+                drift_after_signal: float = 0.004, event_days: int = 90,
+                events_per_ticker: int = 3) -> tuple[dict, pd.DataFrame, pd.DataFrame]:
+    """Events land in the last ``event_days`` sessions (bar the final 20)."""
     rng = np.random.default_rng(seed)
     dates = pd.bdate_range("2025-07-01", periods=n_days)
     prices, ins_rows, flow_rows = {}, [], []
@@ -18,7 +20,8 @@ def make_market(n_tickers: int = 40, n_days: int = 320, seed: int = 7,
     for k, t in enumerate(tickers):
         rets = rng.normal(0.0, 0.018, n_days)
         if t != "SPY":
-            for ev in rng.choice(np.arange(n_days - 90, n_days - 20), size=3, replace=False):
+            for ev in rng.choice(np.arange(n_days - event_days, n_days - 20), size=events_per_ticker,
+                                 replace=False):
                 kind = rng.integers(2)
                 d = dates[ev]
                 if kind == 0:

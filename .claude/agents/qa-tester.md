@@ -1,6 +1,6 @@
 ---
 name: qa-tester
-description: Ingeniero de QA de MiraBot - escribe y ejecuta tests (pytest, pytest-qt), reproduce fallos, añade casos límite y verifica que los cambios funcionan de verdad antes de darlos por terminados. Úsalo tras implementar una funcionalidad, para reproducir un bug o para ampliar la cobertura.
+description: Ingeniero de QA de MiraTrade - escribe y ejecuta tests (pytest, pytest-qt), reproduce fallos, añade casos límite y verifica que los cambios funcionan de verdad antes de darlos por terminados. Úsalo tras implementar una funcionalidad, para reproducir un bug o para ampliar la cobertura.
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

@@ -1,6 +1,6 @@
-# MiraBot
+# MiraTrade
 
-MiraBot tests whether **insider buying** and **unusual options activity** improve **swing trades**. It
+MiraTrade tests whether **insider buying** and **unusual options activity** improve **swing trades**. It
 backtests every candidate trade over a recent window, usually the last 90 days, and mines which
 combinations of conditions separated winners from losers. A rule counts as an edge only if it
 holds up **out of sample**.
@@ -9,15 +9,16 @@ holds up **out of sample**.
 
 ```bash
 pip install -e ".[yf,dev]"
-mirabot demo                               # offline: synthetic market with a planted edge
-mirabot analyze --days 90                  # live: SEC Form 4 + prices, last 90 days
-mirabot analyze --days 90 --flow flow.csv  # add an options-flow export
-mirabot snapshot AAPL NVDA TSLA            # save today's CBOE chains (run daily to build flow history)
+miratrade demo                               # offline: synthetic market with a planted edge
+miratrade analyze --days 90                  # live: SEC Form 4 + prices, last 90 days
+miratrade analyze --days 90 --flow flow.csv  # add an options-flow export
+miratrade snapshot AAPL NVDA TSLA            # save today's CBOE chains (run daily to build flow history)
 ```
 
 Output goes to `reports/`: `edge_report.md`, `trades.csv`, `rules.csv` (every rule tested) and
 `rules_options.csv` (the same rules measured on calls) and `candidates.csv` (tickers whose latest
-bar matches a validated rule, with entry, stop, target and a suggested call).
+bar matches a validated rule, with entry, stop, target and a suggested call) and `walk_forward.csv`
+(one row per walk-forward fold).
 
 ## Pipeline
 
@@ -30,8 +31,11 @@ bar matches a validated rule, with entry, stop, target and a suggested call).
 | Backtest | `backtest.py` | Signal at close, entry at the next open, 1.5×ATR stop, 3×ATR target (2R), 15-bar time stop. When stop and target are both touched on the same bar, it assumes the stop. A gap fills at the open. One trade per ticker at a time. |
 | Options | `options_trades.py` | The same signal traded as a ~0.65-delta call on the monthly expiry nearest 45 days out (at least 30), with the same entry and exit dates. Priced with Black-Scholes (realised vol × 1.15, 2.5% half-spread each side). Rules are mined separately for calls, and candidates include a suggested contract. |
 | Edge | `edge.py` | Every conjunction of up to 3 conditions is tested on the first 60% of the window and validated on the last 40%. Significance is lift over the baseline, with a Benjamini-Hochberg correction for multiple testing. |
+| Walk-forward | `edge.py` | The same discovery step re-run on an expanding window: 3 folds over the last 60% of trades, each mining only on trades that had *exited* before the fold starts. Reports each fold, each rule's out-of-sample record (`wf_*` columns, `wf_confirmed`) and all picked trades pooled as lift over the baseline. |
+| Regimes | `regimes.py` | Point-in-time market type on each signal date: bull / sideways / bear (SPY and its 50-day vs the 200-day average) and high / low volatility (SPY 20-day realised vol vs its one-year median). Baseline and validated rules are broken down by regime. |
+| Survivorship | `survivorship.py` | Tickers whose data ends early count as delisted: trades still open are closed at the last bar (optional haircut) and kept, not dropped. Reports tickers with no or too-short price data and the insider buys and option prints lost with them. |
 
-Every threshold is in `mirabot/config.py`.
+Every threshold is in `miratrade/config.py`.
 
 ## Guardrails against fooling yourself
 
@@ -42,16 +46,24 @@ Every threshold is in `mirabot/config.py`.
   pure-noise market yields no validated signal rules, and that a planted insider/flow edge is recovered.
 - **Option prices are modelled, not quoted.** Use the comparison to decide between shares and calls,
   and check the live chain (open interest, spread, earnings date) before buying.
-- **Limits:** 90 days is one market regime. Paper-trade validated rules before sizing up. Costs and
-  slippage are not modelled.
+- **Walk-forward:** a single split can get lucky. Walk-forward re-runs discovery several times and
+  only scores rules on trades that came after them. With 90 days each fold holds ~35 trades and
+  usually picks nothing; run `--days 365` or more to make it meaningful. The tests check that
+  ~1.5 years of synthetic data recovers the planted edge and that pure noise yields nothing.
+- **Market regime:** check the regime table before generalising. A rule seen only in a bear or
+  high-vol market is a hypothesis for that market only.
+- **Survivorship:** free price sources drop most delisted tickers. The coverage section reports how
+  many tickers and signals were lost. Set `SurvivorshipParams.delist_exit_haircut` (e.g. 0.3) to
+  stress-test delisted exits.
+- **Limits:** Paper-trade validated rules before sizing up. Costs and slippage are not modelled.
 
 ## Data notes
 
-- SEC requires a contact User-Agent: `export MIRABOT_SEC_UA="Your Name you@example.com"`.
+- SEC requires a contact User-Agent: `export MIRATRADE_SEC_UA="Your Name you@example.com"`.
 - The first run over the current quarter downloads each Form 4 (about 1,000 a day at 8 requests
   per second), so it takes a while. Everything is cached in `.cache/`.
 - Free *historical* options flow doesn't exist. Either export 90 days from a flow vendor and pass
-  `--flow`, or run `mirabot snapshot` daily to build your own history.
+  `--flow`, or run `miratrade snapshot` daily to build your own history.
 
 ## Claude Code agents
 

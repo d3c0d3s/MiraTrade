@@ -18,7 +18,7 @@ from statistics import NormalDist
 import numpy as np
 import pandas as pd
 
-from mirabot.config import OptionParams
+from miratrade.config import OptionParams
 
 _N = NormalDist()
 
@@ -73,7 +73,7 @@ def realized_vol(close: pd.Series, n: int = 20) -> pd.Series:
 
 
 def option_contract(s: float, on: date, vol: float, p: OptionParams) -> dict:
-    """The call MiraBot would buy at price ``s`` on ``on`` given realised vol ``vol``."""
+    """The call MiraTrade would buy at price ``s`` on ``on`` given realised vol ``vol``."""
     sigma = float(np.clip(vol * p.iv_mult, p.vol_floor, p.vol_cap))
     expiry = monthly_expiry(on, p.target_dte, p.min_dte)
     t = (expiry - on).days / 365
