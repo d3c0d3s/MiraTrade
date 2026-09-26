@@ -11,10 +11,12 @@ Everything is normalised to one DataFrame, see ``INSIDER_COLUMNS``.
 from __future__ import annotations
 
 import io
+import os
 import re
 import time
 import zipfile
 import xml.etree.ElementTree as ET
+from contextlib import contextmanager
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -25,7 +27,7 @@ from miratrade.config import CACHE_DIR, SEC_USER_AGENT
 INSIDER_COLUMNS = [
     "accession", "filing_date", "trade_date", "ticker", "issuer", "issuer_cik", "owner", "owner_cik",
     "is_officer", "is_director", "is_ten_pct", "title", "code", "shares", "price",
-    "value", "owned_after", "delta_own_pct",
+    "value", "owned_after", "delta_own_pct", "plan_10b5_1",
 ]
 
 # The SEC moved the data sets from 2026 Q2 on; older quarters stay at the original path.
@@ -33,49 +35,148 @@ BULK_URLS = tuple(f"https://www.sec.gov/files/{d}/data/insider-transactions-data
                   for d in ("datastandardsinnovation", "structureddata"))
 DAILY_INDEX_URL = "https://www.sec.gov/Archives/edgar/daily-index/{year}/QTR{q}/form.{ymd}.idx"
 ARCHIVE_URL = "https://www.sec.gov/Archives/{path}"
-RETRY_STATUS = {429, 500, 502, 503, 504}
+SERVER_ERRORS = {500, 502, 503, 504}
+# SEC fair access: a declared User-Agent with contact and at most 10 requests/second per IP,
+# counting every process. MiraTrade stays under that with one budget shared by all its processes.
+SEC_RATE_PER_S = 8.0
+SEC_BLOCK_WAIT_S = 600.0            # after a 429 the SEC throttles the address for about ten minutes
+
+
+if os.name == "nt":
+    import msvcrt
+
+    def _lock(f) -> None:
+        f.seek(0)
+        while True:
+            try:
+                msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+                return
+            except OSError:
+                time.sleep(0.02)
+
+    def _unlock(f) -> None:
+        f.seek(0)
+        msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+else:
+    import fcntl
+
+    def _lock(f) -> None:
+        fcntl.flock(f, fcntl.LOCK_EX)
+
+    def _unlock(f) -> None:
+        fcntl.flock(f, fcntl.LOCK_UN)
+
+
+class SharedRate:
+    """Request pacing shared by every MiraTrade process through a small state file (last request
+    time, blocked-until time) guarded by an OS file lock. A 429 pauses all of them."""
+
+    def __init__(self, path: Path, per_second: float = SEC_RATE_PER_S):
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.lock_path = self.path.with_name(self.path.name + ".lock")
+        self.interval = 1.0 / per_second
+
+    @contextmanager
+    def _locked(self):
+        with open(self.lock_path, "a+b") as f:
+            _lock(f)
+            try:
+                yield
+            finally:
+                _unlock(f)
+
+    def _read(self) -> tuple[float, float]:
+        try:
+            last, blocked = (float(x) for x in self.path.read_text(encoding="ascii").split()[:2])
+        except (OSError, ValueError):
+            last, blocked = 0.0, 0.0
+        return last, blocked
+
+    def wait_turn(self) -> None:
+        announced = False
+        while True:
+            with self._locked():
+                last, blocked = self._read()
+                now = time.time()
+                if blocked <= now:
+                    pause = last + self.interval - now
+                    if pause > 0:
+                        time.sleep(pause)
+                    self.path.write_text(f"{time.time():.3f} {blocked:.3f}", encoding="ascii")
+                    return
+            if not announced:
+                print(f"  SEC en pausa: se reanuda en {(blocked - now) / 60:.1f} min", flush=True)
+                announced = True
+            time.sleep(min(blocked - now, 30.0))    # sleep outside the lock, then look again
+
+    def block(self, seconds: float) -> None:
+        with self._locked():
+            last, blocked = self._read()
+            self.path.write_text(f"{last:.3f} {max(blocked, time.time() + seconds):.3f}", encoding="ascii")
+
+
+def _retry_after(resp) -> float | None:
+    try:
+        return min(float((getattr(resp, "headers", None) or {}).get("Retry-After")), 3600.0)
+    except (TypeError, ValueError):
+        return None
 
 
 class SecClient:
-    """Polite EDGAR client: required User-Agent, <=8 req/s, on-disk cache, retries with
-    backoff on rate limiting and transient server errors."""
+    """Polite EDGAR client: declared User-Agent, a request budget shared by all processes,
+    on-disk cache, backoff on server errors, and a real pause when the SEC answers 429."""
 
     def __init__(self, user_agent: str = SEC_USER_AGENT, cache_dir: Path = CACHE_DIR / "sec",
-                 retries: int = 4, backoff: float = 2.0):
+                 retries: int = 4, backoff: float = 2.0, block_wait: float = SEC_BLOCK_WAIT_S,
+                 per_second: float = SEC_RATE_PER_S):
         import requests
 
         self.session = requests.Session()
         self.session.headers["User-Agent"] = user_agent
+        self.session.headers["Accept-Encoding"] = "gzip, deflate"
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.retries, self.backoff = retries, backoff
-        self._last = 0.0
+        self.retries, self.backoff, self.block_wait = retries, backoff, block_wait
+        self.rate = SharedRate(self.cache_dir / ".sec_rate", per_second)
 
     def _throttled_get(self, url: str):
-        wait = 0.125 - (time.monotonic() - self._last)
-        if wait > 0:
-            time.sleep(wait)
-        self._last = time.monotonic()
+        self.rate.wait_turn()
         return self.session.get(url, timeout=60)
 
-    def get(self, url: str, cache: bool = True, missing: tuple[int, ...] = (404,)) -> bytes | None:
+    def get(self, url: str, cache: bool = True, missing: tuple[int, ...] = (404,),
+            max_age_days: float | None = None) -> bytes | None:
         """``None`` when the response status is in ``missing``. EDGAR's archive answers a
-        file that does not exist (e.g. the daily index of a holiday) with 403, not 404."""
+        file that does not exist (e.g. the daily index of a holiday) with 403, not 404.
+        ``max_age_days``: refetch a cached copy older than this (data that changes, e.g. XBRL)."""
         import requests
 
         key = self.cache_dir / re.sub(r"[^A-Za-z0-9._-]", "_", url.split("://", 1)[-1])
-        if cache and key.exists():
+        fresh = max_age_days is None or (key.exists() and time.time() - key.stat().st_mtime < max_age_days * 86400)
+        if cache and key.exists() and fresh:
             return key.read_bytes()
+        paused = False
         for attempt in range(self.retries + 1):
             try:
                 resp = self._throttled_get(url)
             except requests.ConnectionError:
                 if attempt == self.retries:
                     raise
-            else:
-                if resp.status_code not in RETRY_STATUS or attempt == self.retries:
-                    break
-            time.sleep(self.backoff * 2 ** attempt)
+                time.sleep(self.backoff * 2 ** attempt)
+                continue
+            if resp.status_code == 429 and not paused:
+                # Retrying at once would only extend the block: pause every process instead.
+                wait = _retry_after(resp)
+                wait = self.block_wait if wait is None else wait
+                print(f"  La SEC pide bajar el ritmo (429): pausa de {wait / 60:.1f} min para todos los procesos",
+                      flush=True)
+                self.rate.block(wait)
+                paused = True
+                continue
+            if resp.status_code in SERVER_ERRORS and attempt < self.retries:
+                time.sleep(self.backoff * 2 ** attempt)
+                continue
+            break
         if resp.status_code in missing:
             return None
         resp.raise_for_status()
@@ -121,6 +222,9 @@ def parse_bulk_zip(data: bytes) -> pd.DataFrame:
         "shares": pd.to_numeric(df["TRANS_SHARES"], errors="coerce"),
         "price": pd.to_numeric(df["TRANS_PRICEPERSHARE"], errors="coerce"),
         "owned_after": pd.to_numeric(df["SHRS_OWND_FOLWNG_TRANS"], errors="coerce"),
+        # 10b5-1 plan checkbox (Form 4 since April 2023; absent, hence False, before that)
+        "plan_10b5_1": (df["AFF10B5ONE"].fillna("").str.strip().str.lower().isin({"1", "true"})
+                        if "AFF10B5ONE" in df else False),
     })
     return _finish(out)
 
@@ -147,6 +251,7 @@ def parse_form4_xml(xml: str, accession: str = "", filing_date: str | None = Non
     issuer = root.find("issuer")
     owner = root.find("reportingOwner")
     rel = owner.find("reportingOwnerRelationship") if owner is not None else None
+    plan = _flag(root, "aff10b5One")
     rows = []
     for tx in root.findall("nonDerivativeTable/nonDerivativeTransaction"):
         rows.append({
@@ -166,8 +271,10 @@ def parse_form4_xml(xml: str, accession: str = "", filing_date: str | None = Non
             "shares": _text(tx, "transactionAmounts/transactionShares"),
             "price": _text(tx, "transactionAmounts/transactionPricePerShare"),
             "owned_after": _text(tx, "postTransactionAmounts/sharesOwnedFollowingTransaction"),
+            "plan_10b5_1": plan,
         })
     df = pd.DataFrame(rows, columns=[c for c in INSIDER_COLUMNS if c not in ("value", "delta_own_pct")])
+    df["plan_10b5_1"] = df["plan_10b5_1"].astype(bool)
     for col in ("shares", "price", "owned_after"):
         df[col] = pd.to_numeric(df[col], errors="coerce")
     for col in ("filing_date", "trade_date"):

@@ -90,6 +90,23 @@ class OutcomeParams:
 
 
 @dataclass
+class ExperimentParams:
+    """Stock-driven experiments (``experiments.py``): the event is read on the stock; the call is
+    the vehicle. Pre-registered grid: change it here, never after looking at the results."""
+    deltas: tuple[float, ...] = (0.50, 0.65, 0.80)
+    dtes: tuple[int, ...] = (45, 60, 90, 120)       # monthly expiry at least this many days out
+    stops: tuple[str, ...] = ("none", "pct10", "atr2", "atr3")
+    exits: tuple[str, ...] = ("premium40_25", "fixed30", "run30_sma10", "run30_chandelier", "run30_macd")
+    activation: float = 0.30            # "run" exits: from +30 % on, let the winner run …
+    floor: float = 0.20                 # … but sell if it falls back to +20 %
+    chandelier_atr: float = 2.0
+    max_hold: int = 60                  # sessions
+    exit_days_before_expiry: int = 14   # never hold a call into its last two weeks
+    train_fraction: float = 0.6         # first 60 % of the window chooses, the rest confirms
+    min_n: int = 100                    # a configuration needs this many trades to be ranked
+
+
+@dataclass
 class RegimeParams:
     trend_sma: int = 200                # bull/bear: SPY and its 50-day vs the 200-day average
     trend_min_periods: int = 120
@@ -140,6 +157,7 @@ class Config:
     options: OptionParams = field(default_factory=OptionParams)
     edge: EdgeParams = field(default_factory=EdgeParams)
     outcomes: OutcomeParams = field(default_factory=OutcomeParams)
+    experiment: ExperimentParams = field(default_factory=ExperimentParams)
     regime: RegimeParams = field(default_factory=RegimeParams)
     survivorship: SurvivorshipParams = field(default_factory=SurvivorshipParams)
     risk: RiskParams = field(default_factory=RiskParams)

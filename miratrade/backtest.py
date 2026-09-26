@@ -23,9 +23,13 @@ from miratrade.survivorship import delisted_tickers
 
 def build_panel(prices: dict[str, pd.DataFrame], insiders: pd.DataFrame, flow: pd.DataFrame,
                 cfg: Config = Config(), market: str = "SPY", ownership: pd.DataFrame | None = None,
-                short_volume: pd.DataFrame | None = None) -> dict[str, pd.DataFrame]:
-    """``ownership`` (13D/13G filings) and ``short_volume`` (FINRA) are optional; without them
-    their features are zero / NaN and the matching conditions never fire."""
+                short_volume: pd.DataFrame | None = None, shares: pd.DataFrame | None = None
+                ) -> dict[str, pd.DataFrame]:
+    """``ownership`` (13D/13G filings), ``short_volume`` (FINRA) and ``shares`` (shares
+    outstanding by filing date, for market cap) are optional; without them their features are
+    zero / NaN and the matching conditions never fire."""
+    from miratrade.data.fundamentals import market_cap
+
     unusual = unusual_prints(flow, cfg.flow)
     mkt = None
     if market in prices:
@@ -43,6 +47,7 @@ def build_panel(prices: dict[str, pd.DataFrame], insiders: pd.DataFrame, flow: p
         ind = ind.join(flow_features(unusual, ind.index, t, cfg.flow))
         ind = ind.join(ownership_features(ownership, ind.index, t, cfg.smart))
         ind = ind.join(short_features(short_volume, ind.index, t, cfg.smart))
+        ind["mkt_cap"] = market_cap(ind.index, ind["close"], shares, t)
         if mkt is not None:
             ind = ind.join(mkt).fillna({"mkt_up": 0.0, "mkt_trend": "unknown", "mkt_vol": "unknown"})
         panel[t] = ind
@@ -117,6 +122,10 @@ def conditions(row: pd.Series) -> dict[str, bool]:
     c["vol:rel>1.5"] = row["rel_volume"] > 1.5
     if "mkt_up" in row:
         c["mkt:spy_above_50d"] = bool(row["mkt_up"])
+    cap = row.get("mkt_cap", np.nan)
+    known = bool(np.isfinite(cap)) and cap > 0
+    c["cap:small"] = known and cap < 2e9                          # small and micro caps
+    c["ins:buy_0.1%cap"] = known and row["ins_buy_value"] / cap >= 0.001
     return c
 
 

@@ -8,6 +8,7 @@ profile rule it matches. Nothing here predicts; it only looks up the past.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
@@ -213,7 +214,8 @@ def run_scan(days: int = 7, end: date | None = None, cfg: Config = Config(), flo
     log(f"Precios de {len(tickers)} empresas …")
     # 400 extra days: 200-day averages at the window start plus a year of chart.
     prices = fetch["prices"](sorted(tickers | {"SPY"}), since - timedelta(days=400), end + timedelta(days=1))
-    panel = build_panel(prices, insiders, flow, cfg, ownership=ownership)
+    shares = fetch["shares"](sorted(tickers), insiders, ownership) if "shares" in fetch else None
+    panel = build_panel(prices, insiders, flow, cfg, ownership=ownership, shares=shares)
     events = recent_events({t: p for t, p in panel.items() if t != "SPY"}, pd.Timestamp(since))
     if len(events):
         events["what"] = [describe(e, insiders, ownership, pd.Timestamp(since), cfg.insider.min_value_usd)
@@ -248,7 +250,14 @@ def _default_fetchers(log: Callable[[str], None]) -> dict:
         log(f"  {stats['resolved']} de {stats['filings']} filings con ticker")
         return df
 
-    return {"insiders": insiders, "ownership": ownership, "prices": load_prices}
+    def shares(tickers, ins, own):
+        from miratrade.data.fundamentals import fetch_shares, ticker_ciks
+
+        tj = json.loads(client.get("https://www.sec.gov/files/company_tickers.json", max_age_days=7))
+        log(f"Acciones en circulación (SEC XBRL) de {len(tickers)} empresas …")
+        return fetch_shares(tickers, ticker_ciks(ins, tj, own), client, log)
+
+    return {"insiders": insiders, "ownership": ownership, "prices": load_prices, "shares": shares}
 
 
 # --------------------------------------------------------------------------- saved scans

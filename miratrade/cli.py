@@ -18,11 +18,12 @@ from miratrade.survivorship import coverage
 
 def pipeline(prices: dict, insiders: pd.DataFrame, flow: pd.DataFrame, start: pd.Timestamp,
              out_dir: Path, cfg: Config = Config(), universe: set[str] | None = None,
-             ownership: pd.DataFrame | None = None, short_volume: pd.DataFrame | None = None) -> dict:
+             ownership: pd.DataFrame | None = None, short_volume: pd.DataFrame | None = None,
+             shares: pd.DataFrame | None = None) -> dict:
     """``universe``: every ticker that should have been tested (default: those with prices), so
     tickers that got no price data can be reported. ``ownership`` (13D/13G) and
     ``short_volume`` (FINRA) add the smart-money conditions when given."""
-    panel = build_panel(prices, insiders, flow, cfg, ownership=ownership, short_volume=short_volume)
+    panel = build_panel(prices, insiders, flow, cfg, ownership=ownership, short_volume=short_volume, shares=shares)
     trades = run_trades(panel, start=start, cfg=cfg)
     wf = None
     if trades.empty:
@@ -82,33 +83,37 @@ def pipeline(prices: dict, insiders: pd.DataFrame, flow: pd.DataFrame, start: pd
             "options": opt, "walk_forward": wf, "regimes": regimes, "survivorship": surv, "profiles": profiles}
 
 
-def cmd_analyze(a) -> None:
+def load_inputs(days: int, end: date | None = None, max_insider_tickers: int = 150, max_13d_tickers: int = 100,
+                tickers: list[str] | None = None, flow_path: str | None = None, insiders_csv: str | None = None,
+                prices_dir: str | None = None, smart_money: bool = True, cfg: Config = Config(),
+                fundamentals: bool = True) -> dict:
+    """Everything an analysis reads, downloaded or taken from the cache: the same inputs for
+    ``analyze`` and ``experiment``."""
     from miratrade.data.options import FLOW_COLUMNS, load_flow_csv
     from miratrade.data.prices import load_prices, load_prices_csv
     from miratrade.data.sec import clean_insiders, fetch_insiders
 
-    end = date.fromisoformat(a.end) if a.end else date.today()
-    start = end - timedelta(days=a.days)
-    cfg = Config()
+    end = end or date.today()
+    start = end - timedelta(days=days)
 
-    if a.insiders_csv:
-        insiders = pd.read_csv(a.insiders_csv, parse_dates=["filing_date", "trade_date"])
+    if insiders_csv:
+        insiders = pd.read_csv(insiders_csv, parse_dates=["filing_date", "trade_date"])
     else:
         print(f"Fetching SEC Form 4 filings {start} → {end} …")
         insiders = fetch_insiders(start, end)
-    flow = load_flow_csv(a.flow) if a.flow else pd.DataFrame(columns=FLOW_COLUMNS)
+    flow = load_flow_csv(flow_path) if flow_path else pd.DataFrame(columns=FLOW_COLUMNS)
     insiders, dropped = clean_insiders(insiders)
     print(f"  dropped insider rows: {dropped['placeholder_ticker']} placeholder tickers, "
           f"{dropped['fund_ticker']} mutual funds, {dropped['total_as_price']} with the total typed as price")
 
     buys = insiders[(insiders["code"] == "P") & (insiders["value"] >= cfg.insider.min_value_usd)]
     ranked = buys.assign(value=buys["value"].clip(upper=cfg.insider.rank_cap_usd))
-    universe = set(ranked.groupby("ticker")["value"].sum().nlargest(a.max_insider_tickers).index)
+    universe = set(ranked.groupby("ticker")["value"].sum().nlargest(max_insider_tickers).index)
     universe |= set(unusual_prints(flow, cfg.flow)["ticker"].unique())
-    universe |= set(a.tickers or []) | {"SPY"}
+    universe |= set(tickers or []) | {"SPY"}
 
     ownership = short_volume = None
-    if not a.no_smart_money:
+    if smart_money:
         from miratrade.data.finra import fetch_short_volume
         from miratrade.data.ownership import cik_ticker_map, fetch_ownership
         from miratrade.data.sec import SecClient
@@ -121,21 +126,77 @@ def cmd_analyze(a) -> None:
         print(f"  {stats['resolved']} of {stats['filings']} filings matched to a ticker "
               f"({stats['unresolved']} private or unknown issuers, {stats['ambiguous']} needed a header)")
         new_13d = ownership[(ownership["kind"] == "13D") & ~ownership["amendment"]]
-        universe |= set(new_13d["ticker"].value_counts().head(a.max_13d_tickers).index)
+        universe |= set(new_13d["ticker"].value_counts().head(max_13d_tickers).index)
         print(f"Fetching FINRA short volume for {len(universe)} tickers …")
         # 60 extra calendar days so the short-ratio z-score has history at the window start.
         short_volume = fetch_short_volume(start - timedelta(days=60), end, tickers=universe)
 
-    if a.prices_dir:
-        prices = load_prices_csv(Path(a.prices_dir))
+    if prices_dir:
+        prices = load_prices_csv(Path(prices_dir))
     else:
         print(f"Loading prices for {len(universe)} tickers …")
         # 300 extra calendar days so 200-day averages exist at the window start.
         prices = load_prices(sorted(universe), start - timedelta(days=300), end + timedelta(days=1))
-    res = pipeline(prices, insiders, flow, pd.Timestamp(start), Path(a.out), cfg, universe=universe,
-                   ownership=ownership, short_volume=short_volume)
+    shares = None
+    if fundamentals:
+        import json
+
+        from miratrade.data.fundamentals import fetch_shares, ticker_ciks
+        from miratrade.data.sec import SecClient
+
+        client = SecClient()
+        ciks = ticker_ciks(insiders, json.loads(client.get("https://www.sec.gov/files/company_tickers.json",
+                                                           max_age_days=7)), ownership)
+        print(f"Fetching shares outstanding (SEC XBRL) for {len(prices)} tickers …")
+        shares = fetch_shares(prices, ciks, client)
+        print(f"  {shares['ticker'].nunique()} with shares outstanding (funds and some foreign filers have none)")
+    return {"prices": prices, "insiders": insiders, "flow": flow, "ownership": ownership,
+            "short_volume": short_volume, "shares": shares, "universe": universe, "start": start, "end": end}
+
+
+def cmd_analyze(a) -> None:
+    cfg = Config()
+    inp = load_inputs(a.days, date.fromisoformat(a.end) if a.end else None, a.max_insider_tickers,
+                      a.max_13d_tickers, a.tickers, a.flow, a.insiders_csv, a.prices_dir,
+                      not a.no_smart_money, cfg)
+    res = pipeline(inp["prices"], inp["insiders"], inp["flow"], pd.Timestamp(inp["start"]), Path(a.out), cfg,
+                   universe=inp["universe"], ownership=inp["ownership"], short_volume=inp["short_volume"],
+                   shares=inp["shares"])
     print(res.get("report", "No trades generated."))
     print(f"\nWrote {a.out}/edge_report.md, trades.csv, rules.csv, candidates.csv, walk_forward.csv")
+
+
+def cmd_experiment(a) -> None:
+    from miratrade.data.issuers import classify_by_index, fetch_fund_ciks, issuer_table
+    from miratrade.data.sec import SecClient
+    from miratrade.experiments import extract_events, report, run_grid
+
+    cfg = Config()
+    inp = load_inputs(a.days, date.fromisoformat(a.end) if a.end else None, a.max_insider_tickers,
+                      a.max_13d_tickers, flow_path=a.flow, smart_money=not a.no_smart_money, cfg=cfg)
+    print("Building the panel …")
+    panel = build_panel(inp["prices"], inp["insiders"], inp["flow"], cfg, ownership=inp["ownership"],
+                        short_volume=inp["short_volume"], shares=inp["shares"])
+    print("Classifying issuers (funds, ETF, BDC, SPAC) from the EDGAR index …")
+    iss = issuer_table(inp["insiders"], panel)
+    if inp["ownership"] is not None and len(inp["ownership"]):
+        own = inp["ownership"].rename(columns={"subject_cik": "issuer_cik"}).assign(issuer="")
+        own = own[~own["ticker"].isin(iss["ticker"]) & own["ticker"].isin(panel)][["ticker", "issuer_cik", "issuer"]]
+        iss = pd.concat([iss, own.drop_duplicates("ticker")], ignore_index=True)
+    kinds = classify_by_index(iss, fetch_fund_ciks(SecClient(), range(inp["start"].year, inp["end"].year + 1)))
+    events = extract_events(panel, cfg, pd.Timestamp(inp["start"]), inp["insiders"],
+                            dict(zip(kinds["ticker"], kinds["kind"])))
+    print(f"{len(events)} events; simulating the grid …")
+    trades = run_grid(panel, events, cfg)
+    md, summary = report(trades, events, cfg, {"start": inp["start"], "end": inp["end"]})
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "experiments.md").write_text(md, encoding="utf-8")
+    summary.to_csv(out / "experiments_summary.csv", index=False)
+    events.to_csv(out / "experiment_events.csv", index=False)
+    kinds.to_csv(out / "issuers.csv", index=False)
+    print(md)
+    print(f"\nWrote {out}/experiments.md, experiments_summary.csv, experiment_events.csv, issuers.csv")
 
 
 def cmd_snapshot(a) -> None:
@@ -204,6 +265,16 @@ def main(argv: list[str] | None = None) -> None:
     sc.add_argument("--no-smart-money", action="store_true", help="skip 13D/13G filings")
     sc.add_argument("--save", help="folder for the result (default: the app's scan folder)")
     sc.set_defaults(func=cmd_scan)
+
+    ex = sub.add_parser("experiment", help="stock-driven tests: event filters, call vs shares, stops and exits")
+    ex.add_argument("--days", type=int, default=1825)
+    ex.add_argument("--end", help="YYYY-MM-DD (default today)")
+    ex.add_argument("--max-insider-tickers", type=int, default=400)
+    ex.add_argument("--max-13d-tickers", type=int, default=200)
+    ex.add_argument("--flow", help="options-flow CSV file or directory")
+    ex.add_argument("--no-smart-money", action="store_true")
+    ex.add_argument("--out", default="reports/5y")
+    ex.set_defaults(func=cmd_experiment)
 
     de = sub.add_parser("demo", help="run the full pipeline on synthetic data with a planted edge")
     de.add_argument("--out", default="reports/demo")

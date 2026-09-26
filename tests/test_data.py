@@ -35,6 +35,9 @@ def test_parse_form4_xml():
     assert r.issuer_cik == "1"
     assert r.value == 50_500 and r.delta_own_pct == 0.25
     assert r.filing_date == pd.Timestamp("2026-08-05") and r.trade_date == pd.Timestamp("2026-08-03")
+    assert not r.plan_10b5_1                                     # no checkbox: not under a plan
+    planned = parse_form4_xml(FORM4.replace("<issuer>", "<aff10b5One>1</aff10b5One><issuer>"))
+    assert planned["plan_10b5_1"].all()
 
 
 def test_parse_daily_index_dedupes_and_filters():
@@ -63,6 +66,15 @@ def test_parse_bulk_zip():
     assert r.ticker == "ACME" and r.is_officer and r.is_director and r.value == 1000
     assert r.issuer_cik == "42"
     assert r.delta_own_pct == 1.0  # brand-new position
+    assert not r.plan_10b5_1       # data sets before 2023 have no AFF10B5ONE column
+
+    tables["SUBMISSION.tsv"] = ("ACCESSION_NUMBER\tFILING_DATE\tISSUERNAME\tISSUERTRADINGSYMBOL\tISSUERCIK\tAFF10B5ONE\n"
+                                "a1\t05-AUG-2026\tAcme\tACME\t0000000042\ttrue\n")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name, body in tables.items():
+            zf.writestr(name, body)
+    assert parse_bulk_zip(buf.getvalue())["plan_10b5_1"].all()
 
 
 def test_parse_occ():
@@ -89,8 +101,8 @@ def test_parse_cboe_chain():
 
 
 class _Resp:
-    def __init__(self, status, content=b"ok"):
-        self.status_code, self.content = status, content
+    def __init__(self, status, content=b"ok", headers=None):
+        self.status_code, self.content, self.headers = status, content, headers or {}
 
     def raise_for_status(self):
         if self.status_code >= 400:
@@ -100,7 +112,8 @@ class _Resp:
 def _client(tmp_path, statuses):
     from miratrade.data.sec import SecClient
 
-    c = SecClient(user_agent="test test@example.com", cache_dir=tmp_path, retries=3, backoff=0)
+    c = SecClient(user_agent="test test@example.com", cache_dir=tmp_path, retries=3, backoff=0,
+                  block_wait=0)
     replies = iter(_Resp(s) for s in statuses)
     c.session.get = lambda url, timeout: next(replies)
     return c
@@ -128,6 +141,50 @@ def test_sec_client_missing_statuses(tmp_path):
     assert _client(tmp_path, [403]).get("https://www.sec.gov/idx", missing=(403, 404)) is None
     with pytest.raises(RuntimeError):
         _client(tmp_path, [403]).get("https://www.sec.gov/other")
+
+
+def test_sec_rate_limit_is_shared_and_a_429_pauses_everyone(tmp_path):
+    import time
+
+    import pytest
+
+    from miratrade.data.sec import SecClient, SharedRate
+
+    # two clients (think: the app and an analysis) share one budget through the cache folder
+    a, b = (SecClient(user_agent="t t@example.com", cache_dir=tmp_path, per_second=20) for _ in range(2))
+    for c in (a, b):
+        c.session.get = lambda url, timeout: _Resp(200)
+    t0 = time.perf_counter()
+    for k in range(6):
+        (a if k % 2 else b).get(f"https://www.sec.gov/r{k}", cache=False)
+    assert time.perf_counter() - t0 >= 5 / 20 * 0.9
+
+    # a 429 with Retry-After blocks the shared file and the retry waits for it
+    replies = iter([_Resp(429, headers={"Retry-After": "0.3"}), _Resp(200, b"later")])
+    a.session.get = lambda url, timeout: next(replies)
+    t0 = time.perf_counter()
+    assert a.get("https://www.sec.gov/blocked", cache=False) == b"later"
+    assert time.perf_counter() - t0 >= 0.25
+    assert SharedRate(tmp_path / ".sec_rate")._read()[1] > 0
+
+    # a second 429 on the same request is an error, not an endless wait
+    replies = iter([_Resp(429, headers={"Retry-After": "0"}), _Resp(429, headers={"Retry-After": "0"})])
+    a.session.get = lambda url, timeout: next(replies)
+    with pytest.raises(RuntimeError):
+        a.get("https://www.sec.gov/again", cache=False)
+
+
+def test_sec_cache_max_age(tmp_path):
+    import os
+
+    c = _client(tmp_path, [200])
+    assert c.get("https://data.sec.gov/x.json") == b"ok"
+    key = tmp_path / "data.sec.gov_x.json"
+    old = key.stat().st_mtime - 10 * 86400
+    os.utime(key, (old, old))
+    c.session.get = lambda url, timeout: _Resp(200, b"fresh")
+    assert c.get("https://data.sec.gov/x.json") == b"ok"                      # plain cache never expires
+    assert c.get("https://data.sec.gov/x.json", max_age_days=7) == b"fresh"   # a stale copy is refetched
 
 
 def test_clean_insiders_drops_filing_errors():
