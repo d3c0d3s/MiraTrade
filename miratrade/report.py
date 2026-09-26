@@ -55,8 +55,9 @@ def _walk_forward_section(wf: dict, min_lift_r: float) -> list[str]:
         "rules_picked": "rules picked", "picked_n": "picked trades", "picked_avg_r": "picked avg R"})))
     s = wf["summary"]
     if s["trades"] == 0:
-        out.append("\nNo fold picked a rule, so there is nothing to trade out of sample. With a short "
-                   "window each fold has few trades; use `--days 365` or more before trusting any rule.\n")
+        out.append("\nNo fold picked a rule, so there is nothing to trade out of sample. Either there is "
+                   "no stable edge in these signals, or each fold has too few trades to show one; a "
+                   "longer window (`--days`) tells the two apart.\n")
     else:
         verdict = ("held up" if s["lift_r"] >= min_lift_r and s["p"] < 0.05
                    else "did **not** clearly beat the baseline")

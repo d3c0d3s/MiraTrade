@@ -16,6 +16,8 @@ class InsiderParams:
     cluster_window_days: int = 10       # insiders buying within this window count as a cluster
     min_value_usd: float = 25_000       # ignore token purchases
     lookback_days: int = 30             # a signal stays "active" this long after the filing
+    rank_cap_usd: float = 50_000_000    # one purchase counts at most this much when picking the
+                                        # universe, so a takeover-sized buy doesn't crowd others out
 
 
 @dataclass

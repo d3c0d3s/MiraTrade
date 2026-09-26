@@ -73,7 +73,7 @@ def pipeline(prices: dict, insiders: pd.DataFrame, flow: pd.DataFrame, start: pd
 def cmd_analyze(a) -> None:
     from miratrade.data.options import FLOW_COLUMNS, load_flow_csv
     from miratrade.data.prices import load_prices, load_prices_csv
-    from miratrade.data.sec import fetch_insiders
+    from miratrade.data.sec import clean_insiders, fetch_insiders
 
     end = date.fromisoformat(a.end) if a.end else date.today()
     start = end - timedelta(days=a.days)
@@ -85,9 +85,13 @@ def cmd_analyze(a) -> None:
         print(f"Fetching SEC Form 4 filings {start} → {end} …")
         insiders = fetch_insiders(start, end)
     flow = load_flow_csv(a.flow) if a.flow else pd.DataFrame(columns=FLOW_COLUMNS)
+    insiders, dropped = clean_insiders(insiders)
+    print(f"  dropped insider rows: {dropped['placeholder_ticker']} placeholder tickers, "
+          f"{dropped['fund_ticker']} mutual funds, {dropped['total_as_price']} with the total typed as price")
 
     buys = insiders[(insiders["code"] == "P") & (insiders["value"] >= cfg.insider.min_value_usd)]
-    universe = set(buys.groupby("ticker")["value"].sum().nlargest(a.max_insider_tickers).index)
+    ranked = buys.assign(value=buys["value"].clip(upper=cfg.insider.rank_cap_usd))
+    universe = set(ranked.groupby("ticker")["value"].sum().nlargest(a.max_insider_tickers).index)
     universe |= set(unusual_prints(flow, cfg.flow)["ticker"].unique())
     universe |= set(a.tickers or []) | {"SPY"}
 

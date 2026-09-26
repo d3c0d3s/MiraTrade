@@ -258,3 +258,26 @@ def fetch_insiders(start: date, end: date, client: SecClient | None = None,
     mask = (df["filing_date"].dt.date >= start) & (df["filing_date"].dt.date <= end)
     df = df[mask & df["code"].isin(codes) & df["ticker"].str.fullmatch(r"[A-Z.]{1,6}", na=False)]
     return df.drop_duplicates().reset_index(drop=True)
+
+
+# Placeholder tickers filers type when the issuer has none.
+_NO_TICKER = {"NONE", "NA", "N", "NAN", "NULL", "TBD"}
+
+
+def clean_insiders(insiders: pd.DataFrame, max_price: float = 10_000,
+                   max_bad_value: float = 1e8) -> tuple[pd.DataFrame, dict]:
+    """Drop rows that are filing errors or not stocks. Returns the rows kept and counts.
+
+    * Placeholder tickers ("NONE") and mutual-fund tickers (four letters + X, e.g. ``PBLSX``).
+    * A per-share price above ``max_price`` on a trade worth more than ``max_bad_value``: the
+      filer typed the *total* amount into the price field (``$24,035,774`` a share). A real
+      high-priced stock (BRK.A) trades a handful of shares, so its value stays under the cap.
+    """
+    t = insiders["ticker"].fillna("")
+    placeholder = t.isin(_NO_TICKER)
+    fund = t.str.fullmatch(r"[A-Z]{4}X")
+    total_as_price = (insiders["price"] > max_price) & (insiders["value"] > max_bad_value)
+    bad = placeholder | fund | total_as_price
+    stats = {"placeholder_ticker": int(placeholder.sum()), "fund_ticker": int((fund & ~placeholder).sum()),
+             "total_as_price": int((total_as_price & ~placeholder & ~fund).sum())}
+    return insiders[~bad].reset_index(drop=True), stats

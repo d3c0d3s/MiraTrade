@@ -128,3 +128,18 @@ def test_sec_client_missing_statuses(tmp_path):
     assert _client(tmp_path, [403]).get("https://www.sec.gov/idx", missing=(403, 404)) is None
     with pytest.raises(RuntimeError):
         _client(tmp_path, [403]).get("https://www.sec.gov/other")
+
+
+def test_clean_insiders_drops_filing_errors():
+    from miratrade.data.sec import clean_insiders
+
+    rows = pd.DataFrame({
+        "ticker": ["ACME", "NONE", "PBLSX", "REEMF", "BRK.A", "SPGX"],
+        "price": [50.0, 10.0, 12.0, 24_035_774.4, 700_000.0, 30.0],
+        "shares": [1_000, 1_000, 1_000, 100_149_100, 10, 1_000],
+    }).assign(value=lambda d: d["price"] * d["shares"])
+    kept, stats = clean_insiders(rows)
+    # REEMF typed the total into the price field; BRK.A is a genuinely high price on few shares;
+    # SPGX is a four-letter stock, not a five-letter fund ticker.
+    assert list(kept["ticker"]) == ["ACME", "BRK.A", "SPGX"]
+    assert stats == {"placeholder_ticker": 1, "fund_ticker": 1, "total_as_price": 1}
