@@ -10,7 +10,7 @@ central en azul MiraTrade y una flecha verde en zigzag que pasa por detrás y ro
 |---|---|
 | `simbolo/` | Símbolo en SVG y PNG (16–1024 px): `fondo-oscuro` (principal), `fondo-claro`, `monocromo`, `alternativa-ambar` |
 | `icono/` | Icono de app sobre baldosa redondeada (SVG, PNG 16–1024) y `miratrade.ico` para Windows |
-| `firma/` | Símbolo + nombre «MiraTrade» para fondo oscuro y claro: SVG y PNG transparente (`png/`, a 1×, 2× y 4×) |
+| `firma/` | Símbolo + nombre «MiraTrade» para fondo oscuro y claro, sola o con el respaldo «a Mirandas Group company» (`-respaldo-`): SVG y PNG transparente (`png/`, a 1×, 2× y 4×) |
 | `manual/` | PDF exportado del lienzo del manual de marca |
 | `fuente-diseno/` | Fuentes editables: tableros del lienzo (`manual-marca/`, `mockup-app/`) y los generadores en Python |
 

@@ -134,6 +134,26 @@ def group_lockup(fg="#F5F1E8", gold="#C9A24A"):
             f'{name}{group}</svg>')
 
 
+def centred(text, family, weight, px, y, fill, spacing, width):
+    """Outline ``text`` centred in ``width`` (the trailing letter-spacing is not counted)."""
+    _, end = outline(text, family, weight, px, 0, y, fill, spacing)
+    return outline(text, family, weight, px, (width - (end - spacing)) / 2, y, fill, spacing)[0]
+
+
+def group_lockup_v(fg="#F5F1E8", gold="#C9A24A"):
+    """Stacked lockup: symbol above, MIRANDAS / GROUP centred below."""
+    return ('<svg xmlns="http://www.w3.org/2000/svg" width="360" height="200" viewBox="0 0 360 200">'
+            f'<g transform="translate(132 0) scale(1.5)" fill="none">{group_body(96, gold, fg, gold)}</g>'
+            f'{centred("MIRANDAS", "IBM Plex Serif", 600, 40, 146, fg, 5, 360)}'
+            f'{centred("GROUP", "IBM Plex Sans", 400, 15, 180, gold, 10, 360)}</svg>')
+
+
+def group_mini(size, dark=True):
+    """Small group mark for endorsements (uses the small-size frame automatically)."""
+    return group_body(size, "#C9A24A", "#F5F1E8", "#C9A24A") if dark else \
+        group_body(size, "#7F611A", "#0E1726", "#7F611A")
+
+
 # --------------------------------------------------------------------------- MiraTrade
 LIGHT = dict(bg="#F5F7FB", frame_c="#2F5BC8", side="#0E1726", mid="#2F5BC8", arrow="#0E8A5F")
 MONO = dict(bg="#0F131A", frame_c="#E6EAF2", side="#E6EAF2", mid="#8A93A3", arrow="#E6EAF2")
@@ -157,6 +177,16 @@ def mt_lockup(dark=True):
             f'{mira}{trade}</svg>')
 
 
+def mt_lockup_endorsed(dark=True):
+    """MiraTrade lockup plus the group endorsement line, aligned with the wordmark."""
+    base = mt_lockup(dark)
+    grey = "#A7B0BE" if dark else "#4A5261"
+    text, _ = outline("a Mirandas Group company", "IBM Plex Sans", 400, 15, 148, 114, grey, spacing=0.6)
+    mini = f'<g transform="translate(119 96) scale(0.34375)" fill="none">{group_mini(22, dark)}</g>'
+    return (base.replace('height="120" viewBox="0 0 520 120"', 'height="126" viewBox="0 0 520 126"')
+            .replace("</svg>", f"{mini}{text}</svg>"))
+
+
 if __name__ == "__main__":
     save_set(group_symbol, GROUP_DIR / "simbolo", "mirandas-group-simbolo")
     save_set(lambda s: group_symbol(s, frame_c="#7F611A", side="#0E1726", centre="#7F611A"),
@@ -170,6 +200,9 @@ if __name__ == "__main__":
     save_lockup(group_lockup(), GROUP_DIR / "firma", "mirandas-group-firma-horizontal", 560, 120)
     save_lockup(group_lockup("#0E1726", "#7F611A"), GROUP_DIR / "firma",
                 "mirandas-group-firma-horizontal-sobre-claro", 560, 120)
+    save_lockup(group_lockup_v(), GROUP_DIR / "firma", "mirandas-group-firma-vertical", 360, 200)
+    save_lockup(group_lockup_v("#0E1726", "#7F611A"), GROUP_DIR / "firma",
+                "mirandas-group-firma-vertical-sobre-claro", 360, 200)
 
     save_set(mt_symbol, MT_DIR / "simbolo", "miratrade-simbolo-fondo-oscuro")
     save_set(lambda s: mt_symbol(s, **LIGHT), MT_DIR / "simbolo", "miratrade-simbolo-fondo-claro")
@@ -179,4 +212,6 @@ if __name__ == "__main__":
     save_ico(mt_app_icon, MT_DIR / "icono" / "miratrade.ico")
     save_lockup(mt_lockup(True), MT_DIR / "firma", "miratrade-firma-horizontal-fondo-oscuro", 520, 120)
     save_lockup(mt_lockup(False), MT_DIR / "firma", "miratrade-firma-horizontal-fondo-claro", 520, 120)
+    save_lockup(mt_lockup_endorsed(True), MT_DIR / "firma", "miratrade-firma-respaldo-fondo-oscuro", 520, 126)
+    save_lockup(mt_lockup_endorsed(False), MT_DIR / "firma", "miratrade-firma-respaldo-fondo-claro", 520, 126)
     print("exported")
