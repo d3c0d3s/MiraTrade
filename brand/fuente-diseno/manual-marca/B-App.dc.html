@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>B · Papel financiero · pantalla Señales</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F6F3EC;font-family:'IBM Plex Sans',sans-serif;color:#15233A}
+a{color:#2A5AA8}a:hover{color:#15233A}
+.mono{font-family:'IBM Plex Mono',monospace}
+.nav{display:flex;align-items:center;min-height:44px;padding:0 16px;color:#4A5361;text-decoration:none;font-size:15px;border-left:3px solid transparent}
+.nav.on{color:#15233A;font-weight:600;border-left-color:#15233A;background:#EFEADF}
+.ev{display:flex;flex-direction:column;gap:6px;width:100%;text-align:left;padding:14px 16px;background:#FFFFFF;border:1px solid #D8D2C4;font-family:'IBM Plex Sans',sans-serif;color:#15233A;cursor:pointer}
+.ev.on{border-color:#15233A;box-shadow:inset 3px 0 0 #15233A}
+.tag{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+.btn{min-height:44px;padding:0 18px;border:1px solid #15233A;background:#FFFFFF;color:#15233A;font:600 14px 'IBM Plex Sans',sans-serif;cursor:pointer}
+.primary{background:#15233A;color:#F6F3EC}
+.lbl{font-size:12px;color:#4A5361;text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; background: #F6F3EC; overflow: hidden">
+  <nav aria-label="Principal" style="width: 220px; flex-shrink: 0; display: flex; flex-direction: column; gap: 2px; padding: 24px 0; border-right: 1px solid #D8D2C4">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 18px 24px">
+      <svg width="30" height="30" viewBox="0 0 64 64" fill="none" aria-hidden="true"><circle cx="32" cy="32" r="28" stroke="#15233A" stroke-width="3"></circle><text x="32" y="44" text-anchor="middle" font-family="Fraunces, serif" font-weight="700" font-size="34" fill="#15233A">M</text><rect x="44" y="10" width="8" height="8" transform="rotate(45 48 14)" fill="#B7791F"></rect></svg>
+      <span style="font-family: 'Fraunces', serif; font-size: 21px; font-weight: 700">MiraTrade</span>
+    </div>
+    <a class="nav on" href="#" aria-current="page">Señales</a>
+    <a class="nav" href="#">Práctica</a>
+    <a class="nav" href="#">Cartera</a>
+    <a class="nav" href="#">Reportes</a>
+    <a class="nav" href="#">Configuración</a>
+  </nav>
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0">
+    <header style="height: 72px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 28px; border-bottom: 1px solid #D8D2C4">
+      <h1 style="margin: 0; font-family: 'Fraunces', serif; font-size: 28px; font-weight: 700">Señales nuevas</h1>
+      <span class="mono" style="font-size: 13px; color: #4A5361">viernes 25 sep 2026 · datos de ejemplo</span>
+      <div style="flex-grow: 1"></div>
+      <span style="padding: 4px 12px; border: 1px solid #2A5AA8; color: #2A5AA8; font-size: 12px; font-weight: 600; letter-spacing: 0.06em">MODO PRÁCTICA</span>
+      <button class="btn" type="button" style="border-color: #B53B2E; color: #B53B2E">Detener todo</button>
+    </header>
+    <div style="flex-grow: 1; display: flex; min-height: 0">
+      <section aria-label="Eventos" style="width: 380px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; padding: 22px; border-right: 1px solid #D8D2C4; overflow: hidden">
+        <span class="lbl">4 eventos · últimos 3 días</span>
+        <sc-for list="{{events}}" as="e" hint-placeholder-count="4">
+          <button type="button" class="{{e.cls}}">
+            <span style="display: flex; justify-content: space-between; width: 100%"><span class="mono" style="font-size: 18px; font-weight: 500">{{e.t}}</span><span class="tag" style="color: {{e.color}}">{{e.kind}}</span></span>
+            <span style="font-size: 14px; line-height: 1.45">{{e.what}}</span>
+            <span style="display: flex; align-items: center; gap: 10px; width: 100%"><span style="flex-grow: 1; height: 6px; background: #EFEADF"><span style="display: block; height: 6px; width: {{e.w}}; background: #15233A"></span></span><span class="mono" style="font-size: 13px">{{e.p}}</span></span>
+            <span style="font-size: 12px; color: #4A5361">prob. de +40 % antes del stop · call 45 días</span>
+          </button>
+        </sc-for>
+      </section>
+      <section aria-label="Gráfico" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 22px 26px">
+        <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-family: 'Fraunces', serif; font-size: 30px; font-weight: 700">ACME</span><span class="mono" style="font-size: 20px">$48,20</span><span class="mono" style="font-size: 15px; color: #1E7B4F">+2,1 %</span></div>
+        <div style="flex-grow: 1; background: #FFFFFF; border: 1px solid #D8D2C4; position: relative">
+          <svg width="100%" height="100%" viewBox="0 0 700 560" preserveAspectRatio="none" role="img" aria-label="Velas de ACME con la compra de directivos marcada">
+            <sc-for list="{{grid}}" as="g" hint-placeholder-count="4"><line x1="0" x2="700" y1="{{g}}" y2="{{g}}" stroke="#EFEADF" stroke-width="1"></line></sc-for>
+            <sc-for list="{{candles}}" as="k" hint-placeholder-count="50">
+              <line x1="{{k.cx}}" x2="{{k.cx}}" y1="{{k.hi}}" y2="{{k.lo}}" stroke="{{k.color}}" stroke-width="1"></line>
+              <rect x="{{k.x}}" y="{{k.top}}" width="8" height="{{k.h}}" fill="{{k.color}}"></rect>
+            </sc-for>
+            <line x1="{{mark.cx}}" x2="{{mark.cx}}" y1="30" y2="540" stroke="#B7791F" stroke-width="1" stroke-dasharray="4 4"></line>
+            <rect x="{{mark.dx}}" y="{{mark.dy}}" width="12" height="12" transform="{{mark.rot}}" fill="#B7791F"></rect>
+          </svg>
+          <span style="position: absolute; left: 14px; top: 10px; font-size: 12px; color: #4A5361">◆ 3 directivos compraron (presentado el 23 sep)</span>
+        </div>
+      </section>
+      <aside aria-label="Operación propuesta" style="width: 340px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; padding: 22px; border-left: 1px solid #D8D2C4; background: #FFFFFF">
+        <span class="lbl">Operación propuesta</span>
+        <span style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 700; line-height: 1.2">Call ACME 45 C · 20 nov 2026</span>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+          <div style="display: flex; flex-direction: column; gap: 2px"><span class="lbl">Prima</span><span class="mono" style="font-size: 17px">$4,90</span></div>
+          <div style="display: flex; flex-direction: column; gap: 2px"><span class="lbl" style="color: #1E7B4F">Objetivo</span><span class="mono" style="font-size: 17px">+40 %</span></div>
+          <div style="display: flex; flex-direction: column; gap: 2px"><span class="lbl" style="color: #B53B2E">Stop</span><span class="mono" style="font-size: 17px">−25 %</span></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px; padding: 14px; background: #F6F3EC">
+          <span style="font-size: 14px; font-weight: 600">Evidencia</span>
+          <span style="font-size: 14px; line-height: 1.5">212 eventos parecidos. 38 % llegó al objetivo, 41 % al stop. Regla confirmada fuera de muestra.</span>
+        </div>
+        <div style="flex-grow: 1"></div>
+        <button class="btn primary" type="button">Vista previa en Schwab</button>
+        <button class="btn" type="button">Añadir a práctica</button>
+        <span style="font-size: 12px; line-height: 1.45; color: #4A5361">Análisis, no asesoramiento. Puedes perder la prima entera.</span>
+      </aside>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    let x = 4242;
+    const rnd = () => { x = (x * 9301 + 49297) % 233280; return x / 233280; };
+    const n = 56, ks = []; let p = 41;
+    for (let k = 0; k < n; k++) {
+      const drift = k > 40 ? 0.006 : -0.001;
+      const o = p, c = o * (1 + (rnd() - 0.5) * 0.04 + drift);
+      ks.push({ o, c, hi: Math.max(o, c) * (1 + rnd() * 0.012), lo: Math.min(o, c) * (1 - rnd() * 0.012) }); p = c;
+    }
+    const max = Math.max(...ks.map(k => k.hi)) * 1.02, min = Math.min(...ks.map(k => k.lo)) * 0.98;
+    const Y = v => 30 + (max - v) / (max - min) * 510, X = k => 14 + k * 12.2;
+    const candles = ks.map((k, j) => { const top = Y(Math.max(k.o, k.c)); return { x: X(j), cx: X(j) + 4, hi: Y(k.hi), lo: Y(k.lo), top, h: Math.max(1.5, Y(Math.min(k.o, k.c)) - top), color: k.c >= k.o ? '#1E7B4F' : '#B53B2E' }; });
+    const ev = candles[40];
+    const events = [
+      { t: 'ACME', kind: 'Directivos', color: '#9A6400', what: '3 directivos compraron $1,2 M, CEO incluido', p: '38 %', w: '38%' },
+      { t: 'NOVA', kind: 'Opciones', color: '#7B4FA0', what: '$2,1 M en calls a 30 días, 4× el interés abierto', p: '33 %', w: '33%' },
+      { t: 'KLTR', kind: '13D', color: '#17706B', what: 'Un fondo activista supera el 5 %', p: '29 %', w: '29%' },
+      { t: 'ORBX', kind: 'Directivos', color: '#9A6400', what: 'Un director compró $60 k', p: '19 %', w: '19%' },
+    ].map((e, i) => ({ ...e, cls: i === 0 ? 'ev on' : 'ev' }));
+    return { candles, events, grid: [140, 270, 400, 530],
+      mark: { cx: ev.cx, dx: ev.cx - 6, dy: ev.lo + 16, rot: `rotate(45 ${ev.cx} ${ev.lo + 22})` } };
+  }
+}
+</script>
+</body>
+</html>

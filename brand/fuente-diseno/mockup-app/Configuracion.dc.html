@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Configuración</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0E13;font-family:'IBM Plex Sans',sans-serif;color:#E6EAF2}
+a{color:#6E9BFF}a:hover{color:#9BBAFF}
+.mono{font-family:'IBM Plex Mono',monospace}
+.nav{display:flex;align-items:center;gap:12px;min-height:44px;padding:0 14px;border-radius:8px;color:#9AA4B2;text-decoration:none;font-size:15px;font-weight:500}
+.nav:hover{background:#161B24;color:#E6EAF2}
+.nav.on{background:#18213A;color:#E6EAF2}
+.btn{min-height:44px;padding:0 18px;border-radius:8px;border:1px solid #2A3240;background:#12161D;color:#E6EAF2;font:500 14px 'IBM Plex Sans',sans-serif;cursor:pointer}
+.btn:hover{border-color:#6E9BFF}
+.btn:focus-visible,.nav:focus-visible,input.f:focus-visible{outline:2px solid #6E9BFF;outline-offset:2px}
+.btn:disabled{color:#6F7A89;border-color:#1E242E;cursor:not-allowed}
+.primary{background:#3562D1;border-color:#3562D1;color:#FFFFFF}
+.pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:500;border:1px solid #2A3240;color:#C4CCD8}
+.lbl{font-size:13px;color:#C4CCD8;font-weight:500}
+.hint{font-size:12px;line-height:1.4;color:#9AA4B2}
+.card{background:#0F131A;border:1px solid #1E242E;border-radius:12px;padding:20px 22px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px}
+input.f{min-height:44px;box-sizing:border-box;padding:0 12px;border-radius:8px;border:1px solid #2A3240;background:#0B0E13;color:#E6EAF2;font:500 15px 'IBM Plex Mono',monospace;width:100%}
+.field{display:flex;flex-direction:column;gap:6px}
+.broker{display:flex;align-items:center;gap:14px;padding:12px 14px;border:1px solid #1E242E;border-radius:10px}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; background: #0B0E13; overflow: hidden">
+  <nav aria-label="Principal" style="width: 220px; flex-shrink: 0; display: flex; flex-direction: column; gap: 4px; padding: 20px 12px; box-sizing: border-box; background: #0F131A; border-right: 1px solid #1E242E">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 4px 14px 20px">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#6E9BFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"></path><path d="M14 7h7v7"></path></svg>
+      <span style="font-size: 18px; font-weight: 700">MiraTrade</span>
+    </div>
+    <a class="nav" href="Main.dc.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"></path></svg>Mercado</a>
+    <a class="nav" href="Practica.dc.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"></rect><path d="M8 6V4h8v2"></path></svg>Práctica</a>
+    <a class="nav" href="Reportes.dc.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"></path><path d="M9 12h7M9 16h7"></path></svg>Reportes</a>
+    <a class="nav on" href="Configuracion.dc.html" aria-current="page"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"></path></svg>Configuración</a>
+  </nav>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0">
+    <header style="height: 64px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 28px; border-bottom: 1px solid #1E242E; background: #0F131A">
+      <h1 style="margin: 0; font-size: 20px; font-weight: 600">Configuración</h1>
+      <span class="hint">Se guarda en %APPDATA%\MiraTrade</span>
+      <div style="flex-grow: 1"></div>
+      <button class="btn" type="button">Restablecer valores</button>
+      <button class="btn primary" type="button">Guardar cambios</button>
+    </header>
+
+    <div style="flex-grow: 1; min-height: 0; overflow: auto; padding: 24px 28px; box-sizing: border-box; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: min-content; gap: 20px">
+      <section class="card" aria-labelledby="h-datos">
+        <h2 id="h-datos" style="margin: 0; font-size: 17px; font-weight: 600">Datos</h2>
+        <div class="field">
+          <label class="lbl" for="ua">Contacto para la SEC</label>
+          <input id="ua" class="f" type="text" value="Denis ddlpmiranda@gmail.com" />
+          <span class="hint">La SEC exige un nombre y un correo en cada descarga. Solo se envía a sec.gov.</span>
+        </div>
+        <div class="field">
+          <label class="lbl" for="cache">Carpeta de caché</label>
+          <div style="display: flex; gap: 8px"><input id="cache" class="f" type="text" value="%LOCALAPPDATA%\MiraTrade\cache" /><button class="btn" type="button">Cambiar…</button></div>
+          <span class="hint">Form 4, precios y cadenas de opciones descargados · 1,8 GB</span>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="h-riesgo">
+        <div style="display: flex; align-items: center; gap: 10px"><h2 id="h-riesgo" style="margin: 0; font-size: 17px; font-weight: 600">Riesgo</h2><span class="pill" style="border-color: #6E9BFF; color: #BFD0FF">Aplica a práctica</span></div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px">
+          <div class="field"><label class="lbl" for="rpt">Riesgo por operación (%)</label><input id="rpt" class="f" type="text" value="1,0" /><span class="hint">Aviso por encima del 2 %.</span></div>
+          <div class="field"><label class="lbl" for="dl">Pérdida diaria máxima (R)</label><input id="dl" class="f" type="text" value="3" /><span class="hint">Al llegar, pasa a «Solo alertas».</span></div>
+          <div class="field"><label class="lbl" for="mp">Posiciones abiertas máx.</label><input id="mp" class="f" type="text" value="5" /></div>
+          <div class="field"><label class="lbl" for="ms">Máx. por sector</label><input id="ms" class="f" type="text" value="2" /></div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="h-estr">
+        <h2 id="h-estr" style="margin: 0; font-size: 17px; font-weight: 600">Estrategia y validación</h2>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px">
+          <div class="field"><label class="lbl" for="st">Stop (× ATR)</label><input id="st" class="f" type="text" value="1,5" /></div>
+          <div class="field"><label class="lbl" for="tg">Objetivo (× ATR)</label><input id="tg" class="f" type="text" value="3,0" /></div>
+          <div class="field"><label class="lbl" for="mh">Salida por tiempo (sesiones)</label><input id="mh" class="f" type="text" value="15" /></div>
+          <div class="field"><label class="lbl" for="wf">Tramos walk-forward</label><input id="wf" class="f" type="text" value="3" /></div>
+          <div class="field"><label class="lbl" for="lift">Mejora mínima (R)</label><input id="lift" class="f" type="text" value="0,10" /></div>
+          <div class="field"><label class="lbl" for="hc">Descuento si deja de cotizar (%)</label><input id="hc" class="f" type="text" value="0" /></div>
+        </div>
+        <span class="hint">Cambiar estos valores exige volver a ejecutar el análisis; las reglas guardadas se marcarán como desactualizadas.</span>
+      </section>
+
+      <section class="card" aria-labelledby="h-brok">
+        <h2 id="h-brok" style="margin: 0; font-size: 17px; font-weight: 600">Brókers</h2>
+        <div class="broker" style="border-color: #2B3A5E; background: #111827">
+          <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1"><span style="font-size: 15px; font-weight: 600">Bróker simulado</span><span class="hint">Cuenta de práctica · $25 000 iniciales</span></div>
+          <span class="pill" style="border-color: #2E6B55; color: #7FE3BD">✓ Activo</span>
+        </div>
+        <div class="broker">
+          <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1"><span style="font-size: 15px; font-weight: 600">Charles Schwab</span><span class="hint">OAuth 2 · el acceso caduca cada 7 días</span></div>
+          <button class="btn" type="button" disabled="{{yes}}">Próximamente</button>
+        </div>
+        <div class="broker">
+          <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1"><span style="font-size: 15px; font-weight: 600">TradeStation</span><span class="hint">OAuth 2 · incluye entorno SIM</span></div>
+          <button class="btn" type="button" disabled="{{yes}}">Próximamente</button>
+        </div>
+        <div class="broker">
+          <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1"><span style="font-size: 15px; font-weight: 600">E*TRADE</span><span class="hint">OAuth 1.0a · el acceso caduca a medianoche ET</span></div>
+          <button class="btn" type="button" disabled="{{yes}}">Próximamente</button>
+        </div>
+        <span class="hint">Las credenciales se guardan en el Administrador de credenciales de Windows, nunca en archivos.</span>
+      </section>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return { yes: true }; }
+}
+</script>
+</body>
+</html>

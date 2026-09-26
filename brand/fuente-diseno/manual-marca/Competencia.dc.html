@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Análisis de logos de competidores</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0E13;font-family:'IBM Plex Sans',sans-serif;color:#E6EAF2}
+a{color:#6E9BFF}a:hover{color:#9BBAFF}
+.lbl{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.14em;color:#9AA4B2}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:11px;font-weight:600;color:#9AA4B2;text-transform:uppercase;letter-spacing:.06em;padding:0 8px 8px;border-bottom:1px solid #2A3240}
+td{padding:7px 8px;border-bottom:1px solid #161B24;vertical-align:top;line-height:1.35}
+.dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; padding: 44px 52px; background: #0B0E13; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 40px">
+  <section style="display: flex; flex-direction: column; gap: 16px; min-width: 0">
+    <span class="lbl">ESTUDIO · LOGOS DE 10 COMPETIDORES · SEP 2026</span>
+    <h1 style="margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -0.015em">Qué hace la competencia (y qué nadie hace)</h1>
+    <table>
+      <thead><tr><th>Competidor</th><th>Nicho</th><th>Símbolo</th><th>Color</th></tr></thead>
+      <tbody>
+        <tr><td>Unusual Whales</td><td>Flujo de opciones</td><td>Mascota: ballena de dibujo que expulsa billetes</td><td><span class="dot" style="background: #4FA3D8"></span>azul + verde</td></tr>
+        <tr><td>WhaleWisdom</td><td>13F, fondos</td><td>Ballena en insignia</td><td><span class="dot" style="background: #3FBFAE"></span>turquesa</td></tr>
+        <tr><td>Market Chameleon</td><td>Opciones</td><td>Cola de camaleón en espiral sustituye una letra</td><td><span class="dot" style="background: #2F8FA0"></span>azul petróleo</td></tr>
+        <tr><td>Insider Monkey</td><td>Directivos, fondos</td><td>Solo letras de bloque apiladas</td><td><span class="dot" style="background: #CB3A1B"></span>blanco + rojo</td></tr>
+        <tr><td>OpenInsider</td><td>Directivos</td><td>Sin logo: texto en una barra</td><td><span class="dot" style="background: #2B3A7A"></span>azul marino</td></tr>
+        <tr><td>Quiver Quantitative</td><td>Congreso, smart money</td><td>Retícula isométrica de líneas</td><td><span class="dot" style="background: #E6EAF2"></span>blanco monocromo</td></tr>
+        <tr><td>Cheddar Flow</td><td>Flujo de opciones</td><td>Chevrones y cuadrado que forman un rombo</td><td><span class="dot" style="background: #E0B53A"></span>dorado</td></tr>
+        <tr><td>FlowAlgo</td><td>Flujo de opciones</td><td>Línea de pulso en zigzag</td><td><span class="dot" style="background: #7B3FF2"></span>violeta</td></tr>
+        <tr><td>BlackBoxStocks</td><td>Alertas, flujo</td><td>Cubo hexagonal + triángulos al alza</td><td><span class="dot" style="background: #57C84D"></span>verde sobre negro</td></tr>
+        <tr><td>Tradytics</td><td>Flujo con IA</td><td>Pirámide facetada</td><td><span class="dot" style="background: #E6EAF2"></span>blanco monocromo</td></tr>
+        <tr><td>TradingView</td><td>Gráficos (referencia)</td><td>Monograma geométrico sólido</td><td><span class="dot" style="background: #E6EAF2"></span>blanco / negro</td></tr>
+      </tbody>
+    </table>
+    <span style="font-size: 12px; color: #9AA4B2">Fuente: logos publicados en sus sitios web, revisados el 26 sep 2026. Fintel no se pudo revisar (bloquea el acceso automatizado). Descripciones propias; no se reproduce ningún logo.</span>
+  </section>
+  <section style="display: flex; flex-direction: column; gap: 18px; min-width: 0">
+    <span class="lbl">MAPA DE POSICIONAMIENTO</span>
+    <div style="position: relative; height: 330px; background: #0F131A; border: 1px solid #1E242E; border-radius: 14px">
+      <svg width="100%" height="100%" viewBox="0 0 540 330" role="img" aria-label="Mapa: el eje horizontal va de símbolo sin significado a símbolo que cuenta el producto; el vertical, de serio a lúdico. La zona serio y con significado está vacía.">
+        <line x1="270" y1="20" x2="270" y2="310" stroke="#2A3240" stroke-width="1"></line>
+        <line x1="20" y1="165" x2="520" y2="165" stroke="#2A3240" stroke-width="1"></line>
+        <rect x="378" y="24" width="138" height="110" rx="12" fill="#6E9BFF" opacity="0.12" stroke="#6E9BFF" stroke-dasharray="5 4"></rect>
+        <text x="447" y="72" text-anchor="middle" fill="#9BBAFF" font-family="IBM Plex Sans" font-size="13" font-weight="600">MiraTrade</text>
+        <text x="447" y="90" text-anchor="middle" fill="#9BBAFF" font-family="IBM Plex Sans" font-size="11">serio + con significado</text>
+        <sc-for list="{{pts}}" as="p" hint-placeholder-count="11">
+          <circle cx="{{p.x}}" cy="{{p.y}}" r="5" fill="{{p.c}}"></circle>
+          <text x="{{p.tx}}" y="{{p.ty}}" fill="#C4CCD8" font-family="IBM Plex Sans" font-size="11">{{p.n}}</text>
+        </sc-for>
+        <text x="24" y="322" fill="#9AA4B2" font-family="IBM Plex Mono" font-size="10">SIN SIGNIFICADO</text>
+        <text x="516" y="322" text-anchor="end" fill="#9AA4B2" font-family="IBM Plex Mono" font-size="10">CUENTA EL PRODUCTO</text>
+        <text x="274" y="16" fill="#9AA4B2" font-family="IBM Plex Mono" font-size="10">SERIO</text>
+        <text x="274" y="306" fill="#9AA4B2" font-family="IBM Plex Mono" font-size="10">LÚDICO</text>
+      </svg>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px">
+      <div style="display: flex; flex-direction: column; gap: 8px; padding: 16px 18px; background: #0F131A; border: 1px solid #1E242E; border-radius: 12px">
+        <span style="font-size: 13px; font-weight: 700; color: #FF8A7A">Clichés que evitamos</span>
+        <span style="font-size: 13px; line-height: 1.55; color: #C4CCD8">Animales (4 de 10, dos ballenas) · líneas de precio en zigzag · rombos dorados · cubos y pirámides · verde sobre negro.</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px; padding: 16px 18px; background: #0F131A; border: 1px solid #1E242E; border-radius: 12px">
+        <span style="font-size: 13px; font-weight: 700; color: #3FD19B">Territorio libre</span>
+        <span style="font-size: 13px; line-height: 1.55; color: #C4CCD8">Nadie usa la mirada («Mira»), ni la idea de validar o de que varias señales coincidan, ni la combinación azul + ámbar.</span>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const raw = [
+      ['Unusual Whales', 0.85, 0.9, '#4FA3D8'], ['WhaleWisdom', 0.72, 0.58, '#3FBFAE'], ['Market Chameleon', 0.45, 0.5, '#2F8FA0'],
+      ['Insider Monkey', 0.3, 0.75, '#CB3A1B'], ['OpenInsider', 0.05, 0.1, '#6B7BC2'], ['Quiver', 0.14, 0.24, '#E6EAF2'],
+      ['Tradytics', 0.12, 0.42, '#E6EAF2'], ['BlackBoxStocks', 0.3, 0.6, '#57C84D'], ['Cheddar Flow', 0.42, 0.82, '#E0B53A'],
+      ['FlowAlgo', 0.6, 0.36, '#7B3FF2'], ['TradingView', 0.24, 0.12, '#E6EAF2'],
+    ];
+    const pts = raw.map(([n, x, y, c]) => {
+      const px = 30 + x * 470, py = 28 + y * 270;
+      return { n, c, x: px, y: py, tx: px + 9, ty: py + 4 };
+    });
+    return { pts };
+  }
+}
+</script>
+</body>
+</html>

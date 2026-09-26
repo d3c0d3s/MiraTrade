@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>D · Retícula · pantalla Señales</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&amp;family=DM+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F7F8FA;font-family:'Archivo',sans-serif;color:#0E1A2B}
+a{color:#2563EB}a:hover{color:#0E1A2B}
+.mono{font-family:'DM Mono',monospace}
+.top{display:flex;align-items:center;height:56px;padding:0 16px;color:#C9D3E1;text-decoration:none;font-size:14px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;border-bottom:3px solid transparent}
+.top.on{color:#FFFFFF;border-bottom-color:#FF5B1F}
+.btn{min-height:44px;padding:0 18px;border:1px solid #0E1A2B;background:#FFFFFF;color:#0E1A2B;font:600 13px 'Archivo',sans-serif;letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
+.primary{background:#FF5B1F;border-color:#FF5B1F;color:#0E1A2B}
+.lbl{font-family:'DM Mono',monospace;font-size:11px;color:#4B5563;text-transform:uppercase;letter-spacing:.1em}
+table{width:100%;border-collapse:collapse}
+th{font-family:'DM Mono',monospace;font-size:11px;font-weight:500;color:#4B5563;text-transform:uppercase;letter-spacing:.1em;text-align:left;padding:10px 12px;border-bottom:2px solid #0E1A2B}
+td{padding:12px;border-bottom:1px solid #D5DAE2;font-size:14px}
+tr.on td{background:#FFF1EA}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #F7F8FA; overflow: hidden">
+  <header style="height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 24px; background: #0E1A2B">
+    <svg width="28" height="28" viewBox="0 0 64 64" fill="none" aria-hidden="true"><circle cx="32" cy="32" r="20" stroke="#F7F8FA" stroke-width="4"></circle><line x1="32" y1="4" x2="32" y2="20" stroke="#F7F8FA" stroke-width="4"></line><line x1="32" y1="44" x2="32" y2="60" stroke="#F7F8FA" stroke-width="4"></line><line x1="4" y1="32" x2="20" y2="32" stroke="#F7F8FA" stroke-width="4"></line><line x1="44" y1="32" x2="60" y2="32" stroke="#F7F8FA" stroke-width="4"></line><circle cx="32" cy="32" r="6" fill="#FF5B1F"></circle></svg>
+    <span style="font-size: 17px; font-weight: 800; letter-spacing: 0.06em; color: #F7F8FA; margin-right: 24px">MIRATRADE</span>
+    <nav aria-label="Principal" style="display: flex">
+      <a class="top on" href="#" aria-current="page">Señales</a>
+      <a class="top" href="#">Práctica</a>
+      <a class="top" href="#">Cartera</a>
+      <a class="top" href="#">Reportes</a>
+      <a class="top" href="#">Ajustes</a>
+    </nav>
+    <div style="flex-grow: 1"></div>
+    <span class="mono" style="font-size: 12px; color: #FF8A5B; letter-spacing: 0.1em">■ PRÁCTICA</span>
+    <button class="btn" type="button" style="background: transparent; color: #FFB4A8; border-color: #FFB4A8; margin-left: 12px">Detener todo</button>
+  </header>
+  <div style="flex-grow: 1; display: grid; grid-template-columns: minmax(0, 1fr) 360px; min-height: 0">
+    <div style="display: flex; flex-direction: column; min-width: 0; padding: 22px 26px; gap: 16px">
+      <div style="display: flex; align-items: baseline; gap: 16px"><h1 style="margin: 0; font-size: 26px; font-weight: 800; letter-spacing: 0.02em">SEÑALES NUEVAS</h1><span class="lbl">25.09.2026 · 4 eventos · datos de ejemplo</span></div>
+      <table aria-label="Eventos">
+        <thead><tr><th>Ticker</th><th>Tipo</th><th>Evento</th><th style="text-align: right">P(+40 %)</th><th style="text-align: right">P(stop)</th><th style="text-align: right">n</th></tr></thead>
+        <tbody>
+          <sc-for list="{{events}}" as="e" hint-placeholder-count="4">
+            <tr class="{{e.cls}}"><td class="mono" style="font-weight: 500">{{e.t}}</td><td><span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: {{e.color}}"><span style="width: 8px; height: 8px; background: {{e.color}}"></span>{{e.kind}}</span></td><td>{{e.what}}</td><td class="mono" style="text-align: right; font-weight: 500">{{e.p}}</td><td class="mono" style="text-align: right; color: #4B5563">{{e.s}}</td><td class="mono" style="text-align: right; color: #4B5563">{{e.n}}</td></tr>
+          </sc-for>
+        </tbody>
+      </table>
+      <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 16px; background: #FFFFFF; border: 1px solid #D5DAE2">
+        <div style="display: flex; align-items: baseline; gap: 12px"><span style="font-size: 20px; font-weight: 800">ACME</span><span class="mono" style="font-size: 16px">48.20</span><span class="mono" style="font-size: 13px; color: #0A7F56">+2.1%</span><span class="lbl" style="margin-left: auto">diario · 56 sesiones</span></div>
+        <div style="flex-grow: 1; position: relative">
+          <svg width="100%" height="100%" viewBox="0 0 900 300" preserveAspectRatio="none" role="img" aria-label="Velas de ACME con la compra de directivos marcada">
+            <sc-for list="{{grid}}" as="g" hint-placeholder-count="5"><line x1="{{g}}" x2="{{g}}" y1="0" y2="300" stroke="#EEF1F5" stroke-width="1"></line></sc-for>
+            <sc-for list="{{candles}}" as="k" hint-placeholder-count="56">
+              <line x1="{{k.cx}}" x2="{{k.cx}}" y1="{{k.hi}}" y2="{{k.lo}}" stroke="{{k.color}}" stroke-width="1"></line>
+              <rect x="{{k.x}}" y="{{k.top}}" width="9" height="{{k.h}}" fill="{{k.color}}"></rect>
+            </sc-for>
+            <circle cx="{{mark.cx}}" cy="{{mark.cy}}" r="10" stroke="#FF5B1F" stroke-width="2" fill="none"></circle>
+            <line x1="{{mark.cx}}" x2="{{mark.cx}}" y1="0" y2="300" stroke="#FF5B1F" stroke-width="1"></line>
+          </svg>
+        </div>
+      </div>
+    </div>
+    <aside aria-label="Operación propuesta" style="display: flex; flex-direction: column; gap: 16px; padding: 22px; background: #FFFFFF; border-left: 1px solid #D5DAE2">
+      <span class="lbl">Operación propuesta</span>
+      <span style="font-size: 22px; font-weight: 800; letter-spacing: 0.02em; line-height: 1.2">ACME 20NOV26 45 C</span>
+      <table>
+        <tbody>
+          <tr><td class="lbl" style="font-size: 11px">Prima</td><td class="mono" style="text-align: right">4.90</td></tr>
+          <tr><td class="lbl" style="font-size: 11px">Objetivo</td><td class="mono" style="text-align: right; color: #0A7F56">+40 % · 6.86</td></tr>
+          <tr><td class="lbl" style="font-size: 11px">Stop</td><td class="mono" style="text-align: right; color: #C62828">−25 % · 3.68</td></tr>
+          <tr><td class="lbl" style="font-size: 11px">Evidencia</td><td class="mono" style="text-align: right">n 212 · 38 / 41 %</td></tr>
+          <tr><td class="lbl" style="font-size: 11px">Fuera de muestra</td><td class="mono" style="text-align: right; color: #0A7F56">confirmada</td></tr>
+        </tbody>
+      </table>
+      <div style="flex-grow: 1"></div>
+      <button class="btn primary" type="button">Vista previa en Schwab</button>
+      <button class="btn" type="button">Añadir a práctica</button>
+      <span style="font-size: 12px; line-height: 1.45; color: #4B5563">Análisis, no asesoramiento. Puedes perder la prima entera.</span>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    let x = 4242;
+    const rnd = () => { x = (x * 9301 + 49297) % 233280; return x / 233280; };
+    const n = 56, ks = []; let p = 41;
+    for (let k = 0; k < n; k++) {
+      const drift = k > 40 ? 0.006 : -0.001;
+      const o = p, c = o * (1 + (rnd() - 0.5) * 0.04 + drift);
+      ks.push({ o, c, hi: Math.max(o, c) * (1 + rnd() * 0.012), lo: Math.min(o, c) * (1 - rnd() * 0.012) }); p = c;
+    }
+    const max = Math.max(...ks.map(k => k.hi)) * 1.02, min = Math.min(...ks.map(k => k.lo)) * 0.98;
+    const Y = v => 12 + (max - v) / (max - min) * 276, X = k => 12 + k * 15.8;
+    const candles = ks.map((k, j) => { const top = Y(Math.max(k.o, k.c)); return { x: X(j), cx: X(j) + 4.5, hi: Y(k.hi), lo: Y(k.lo), top, h: Math.max(1.5, Y(Math.min(k.o, k.c)) - top), color: k.c >= k.o ? '#0A7F56' : '#C62828' }; });
+    const ev = candles[40];
+    const events = [
+      { t: 'ACME', kind: 'Directivos', color: '#B45309', what: '3 directivos compraron $1,2 M (CEO incluido)', p: '38 %', s: '41 %', n: '212' },
+      { t: 'NOVA', kind: 'Opciones', color: '#6D28D9', what: '$2,1 M en calls a 30 días, 4× el interés abierto', p: '33 %', s: '44 %', n: '158' },
+      { t: 'KLTR', kind: '13D', color: '#0E7490', what: 'Un fondo activista supera el 5 %', p: '29 %', s: '43 %', n: '96' },
+      { t: 'ORBX', kind: 'Directivos', color: '#B45309', what: 'Un director compró $60 k', p: '19 %', s: '48 %', n: '1.043' },
+    ].map((e, i) => ({ ...e, cls: i === 0 ? 'on' : '' }));
+    return { candles, events, grid: [180, 360, 540, 720, 900], mark: { cx: ev.cx, cy: ev.lo + 16 } };
+  }
+}
+</script>
+</body>
+</html>

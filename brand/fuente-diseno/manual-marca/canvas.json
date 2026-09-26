@@ -1,0 +1,204 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "A-App.dc.html": {
+      "h": 900,
+      "page": "avsc",
+      "title": "A · Terminal nocturno · Señales",
+      "w": 1440,
+      "x": 0,
+      "y": 1020
+    },
+    "A-Logo.dc.html": {
+      "h": 900,
+      "page": "avsc",
+      "title": "A · Terminal nocturno · logo nuevo",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "B-App.dc.html": {
+      "h": 900,
+      "title": "B · Papel financiero · Señales",
+      "w": 1440,
+      "x": 1520,
+      "y": 1300
+    },
+    "B-Concepto.dc.html": {
+      "h": 900,
+      "title": "B · Papel financiero · concepto",
+      "w": 1440,
+      "x": 0,
+      "y": 1300
+    },
+    "C-App.dc.html": {
+      "h": 900,
+      "title": "C · Señal · Señales",
+      "w": 1440,
+      "x": 1520,
+      "y": 2600
+    },
+    "C-App2.dc.html": {
+      "h": 900,
+      "page": "avsc",
+      "title": "C · Señal · Señales (logo nuevo)",
+      "w": 1440,
+      "x": 1520,
+      "y": 1020
+    },
+    "C-Concepto.dc.html": {
+      "h": 900,
+      "title": "C · Señal · concepto",
+      "w": 1440,
+      "x": 0,
+      "y": 2600
+    },
+    "C-Logo.dc.html": {
+      "h": 900,
+      "page": "avsc",
+      "title": "C · Señal · logo nuevo",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "Competencia.dc.html": {
+      "h": 900,
+      "page": "logo",
+      "title": "Estudio de 10 competidores",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "D-App.dc.html": {
+      "h": 900,
+      "title": "D · Retícula · Señales",
+      "w": 1440,
+      "x": 1520,
+      "y": 3900
+    },
+    "D-Concepto.dc.html": {
+      "h": 900,
+      "title": "D · Retícula · concepto",
+      "w": 1440,
+      "x": 0,
+      "y": 3900
+    },
+    "Logo-Conceptos.dc.html": {
+      "h": 900,
+      "page": "logo",
+      "title": "Tres conceptos nuevos (paleta A)",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "Main.dc.html": {
+      "h": 900,
+      "title": "Cuatro direcciones",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "Logo-Velas.dc.html": {
+      "x": 0,
+      "y": 1020,
+      "w": 1440,
+      "h": 900,
+      "title": "MiraTrade · logo final (pilares + flecha)",
+      "page": "logo"
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-09-26T21:30:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "page": "logo",
+    "view": "canvas"
+  },
+  "notes": {
+    "colA": {
+      "kind": "title1",
+      "maxW": 1440,
+      "page": "avsc",
+      "text": "A · Terminal nocturno",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "colC": {
+      "kind": "title1",
+      "maxW": 1440,
+      "page": "avsc",
+      "text": "C · Señal",
+      "w": 240,
+      "x": 1520,
+      "y": -300
+    },
+    "logoTitle": {
+      "kind": "title1",
+      "maxW": 2960,
+      "page": "logo",
+      "text": "Logo desde cero · estudio y conceptos",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "rowB": {
+      "kind": "title1",
+      "maxW": 2960,
+      "text": "B · Papel financiero",
+      "w": 240,
+      "x": 0,
+      "y": 1040
+    },
+    "rowC": {
+      "kind": "title1",
+      "maxW": 2960,
+      "text": "C · Señal",
+      "w": 240,
+      "x": 0,
+      "y": 2340
+    },
+    "rowD": {
+      "kind": "title1",
+      "maxW": 2960,
+      "text": "D · Retícula",
+      "w": 240,
+      "x": 0,
+      "y": 3640
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "B-Concepto.dc.html",
+    "B-App.dc.html",
+    "C-Concepto.dc.html",
+    "C-App.dc.html",
+    "D-Concepto.dc.html",
+    "D-App.dc.html",
+    "A-Logo.dc.html",
+    "A-App.dc.html",
+    "C-Logo.dc.html",
+    "C-App2.dc.html",
+    "Competencia.dc.html",
+    "Logo-Conceptos.dc.html",
+    "Logo-Velas.dc.html"
+  ],
+  "pages": [
+    {
+      "id": "propuestas",
+      "name": "Propuestas"
+    },
+    {
+      "id": "avsc",
+      "name": "A vs C"
+    },
+    {
+      "id": "logo",
+      "name": "Logo"
+    }
+  ],
+  "title": "MiraTrade — Manual de marca"
+}

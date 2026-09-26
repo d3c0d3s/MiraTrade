@@ -1,0 +1,18 @@
+{
+  "v": 3,
+  "createdOnFiles": {"v": 1, "at": "2026-09-25T23:40:00Z"},
+  "title": "MiraTrade — app de escritorio",
+  "launch": {"view": "canvas"},
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {"x": 0, "y": 0, "w": 1440, "h": 900, "title": "Mercado", "is_interactive": true},
+    "Practica.dc.html": {"x": 1520, "y": 0, "w": 1440, "h": 900, "title": "Práctica", "is_interactive": true},
+    "Reportes.dc.html": {"x": 0, "y": 1020, "w": 1440, "h": 900, "title": "Reportes", "is_interactive": true},
+    "Configuracion.dc.html": {"x": 1520, "y": 1020, "w": 1440, "h": 900, "title": "Configuración", "is_interactive": true}
+  },
+  "order": ["Main.dc.html", "Practica.dc.html", "Reportes.dc.html", "Configuracion.dc.html"],
+  "notes": {
+    "titulo": {"x": 0, "y": -300, "text": "MiraTrade · investigación + práctica (v1)", "kind": "title1", "maxW": 2960}
+  },
+  "designSystems": []
+}

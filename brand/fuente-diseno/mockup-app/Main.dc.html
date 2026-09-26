@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Mercado</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0E13;font-family:'IBM Plex Sans',sans-serif;color:#E6EAF2}
+a{color:#6E9BFF}a:hover{color:#9BBAFF}
+.mono{font-family:'IBM Plex Mono',monospace}
+.nav{display:flex;align-items:center;gap:12px;min-height:44px;padding:0 14px;border-radius:8px;color:#9AA4B2;text-decoration:none;font-size:15px;font-weight:500}
+.nav:hover{background:#161B24;color:#E6EAF2}
+.nav.on{background:#18213A;color:#E6EAF2}
+.btn{min-height:44px;padding:0 18px;border-radius:8px;border:1px solid #2A3240;background:#12161D;color:#E6EAF2;font:500 14px 'IBM Plex Sans',sans-serif;cursor:pointer}
+.btn:hover{border-color:#6E9BFF}
+.btn:focus-visible,.cand:focus-visible,.nav:focus-visible{outline:2px solid #6E9BFF;outline-offset:2px}
+.primary{background:#3562D1;border-color:#3562D1;color:#FFFFFF}
+.primary:hover{background:#2F57BC}
+.stop{background:#3A1614;border-color:#8C3A33;color:#FFB4AA;font-weight:600}
+.cand{display:flex;flex-direction:column;gap:6px;width:100%;text-align:left;padding:12px 14px;border-radius:10px;border:1px solid #1E242E;background:#12161D;color:#E6EAF2;font-family:'IBM Plex Sans',sans-serif;cursor:pointer}
+.cand:hover{border-color:#3A4658}
+.cand.on{border-color:#6E9BFF;background:#141C2E}
+.pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:500;border:1px solid #2A3240;color:#C4CCD8}
+.lbl{font-size:12px;color:#9AA4B2;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+input.f{min-height:44px;box-sizing:border-box;padding:0 12px;border-radius:8px;border:1px solid #2A3240;background:#0B0E13;color:#E6EAF2;font:500 15px 'IBM Plex Mono',monospace;width:100%}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; background: #0B0E13; overflow: hidden">
+  <nav aria-label="Principal" style="width: 220px; flex-shrink: 0; display: flex; flex-direction: column; gap: 4px; padding: 20px 12px; box-sizing: border-box; background: #0F131A; border-right: 1px solid #1E242E">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 4px 14px 20px">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#6E9BFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"></path><path d="M14 7h7v7"></path></svg>
+      <span style="font-size: 18px; font-weight: 700; letter-spacing: -0.01em">MiraTrade</span>
+    </div>
+    <a class="nav on" href="Main.dc.html" aria-current="page"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"></path></svg>Mercado</a>
+    <a class="nav" href="Practica.dc.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"></rect><path d="M8 6V4h8v2"></path></svg>Práctica</a>
+    <a class="nav" href="Reportes.dc.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"></path><path d="M9 12h7M9 16h7"></path></svg>Reportes</a>
+    <a class="nav" href="Configuracion.dc.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"></path></svg>Configuración</a>
+    <div style="flex-grow: 1"></div>
+    <div style="padding: 12px 14px; border-radius: 10px; background: #12161D; border: 1px solid #1E242E; display: flex; flex-direction: column; gap: 6px">
+      <span class="lbl">Último análisis</span>
+      <span class="mono" style="font-size: 13px; color: #C4CCD8">25 sep 2026 · 365 días</span>
+      <span style="font-size: 13px; color: #3FD19B">3 reglas validadas</span>
+    </div>
+  </nav>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0">
+    <header style="height: 64px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 24px; border-bottom: 1px solid #1E242E; background: #0F131A">
+      <span class="pill" style="border-color: #6E9BFF; color: #BFD0FF; font-weight: 600">● MODO PRÁCTICA</span>
+      <span style="font-size: 13px; color: #9AA4B2">Datos de ejemplo</span>
+      <div style="flex-grow: 1"></div>
+      <div style="display: flex; flex-direction: column; align-items: flex-end">
+        <span class="lbl">Cuenta práctica</span>
+        <span class="mono" style="font-size: 15px">$25 000,00</span>
+      </div>
+      <div style="display: flex; flex-direction: column; align-items: flex-end">
+        <span class="lbl">Hoy</span>
+        <span class="mono" style="font-size: 15px; color: #3FD19B">+ $182,40 (+0,7R)</span>
+      </div>
+      <button class="btn stop" type="button">Detener todo</button>
+    </header>
+
+    <div style="flex-grow: 1; display: flex; min-height: 0">
+      <section aria-label="Candidatos de hoy" style="width: 320px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; padding: 20px; box-sizing: border-box; border-right: 1px solid #1E242E; overflow: auto">
+        <div style="display: flex; align-items: baseline; justify-content: space-between">
+          <h2 style="margin: 0; font-size: 18px; font-weight: 600">Candidatos de hoy</h2>
+          <span class="mono" style="font-size: 13px; color: #9AA4B2">{{count}}</span>
+        </div>
+        <p style="margin: 0; font-size: 13px; line-height: 1.45; color: #9AA4B2">La última barra cumple una regla validada. Ordenados por el R medio de la regla fuera de muestra.</p>
+        <sc-for list="{{cands}}" as="c" hint-placeholder-count="4">
+          <button type="button" class="{{c.cls}}" onClick="{{c.pick}}" aria-pressed="{{c.on}}">
+            <span style="display: flex; align-items: center; justify-content: space-between; width: 100%">
+              <span class="mono" style="font-size: 17px; font-weight: 600">{{c.t}}</span>
+              <span class="mono" style="font-size: 14px; color: #3FD19B">+{{c.r}}R</span>
+            </span>
+            <span style="font-size: 13px; color: #C4CCD8">{{c.rule}}</span>
+            <span style="display: flex; gap: 6px; flex-wrap: wrap">
+              <sc-if value="{{c.wf}}" hint-placeholder-val="{{true}}"><span class="pill" style="border-color: #2E6B55; color: #7FE3BD">✓ Walk-forward</span></sc-if>
+              <sc-if value="{{c.ins}}" hint-placeholder-val="{{true}}"><span class="pill" style="border-color: #6B5320; color: #F4B740">◆ Directivos</span></sc-if>
+              <sc-if value="{{c.opt}}" hint-placeholder-val="{{false}}"><span class="pill" style="border-color: #4F4470; color: #B79CFF">● Opciones</span></sc-if>
+            </span>
+          </button>
+        </sc-for>
+      </section>
+
+      <section aria-label="Gráfico" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; padding: 20px 24px; gap: 14px; box-sizing: border-box">
+        <div style="display: flex; align-items: baseline; gap: 14px">
+          <h2 class="mono" style="margin: 0; font-size: 26px; font-weight: 600">{{sel.t}}</h2>
+          <span class="mono" style="font-size: 20px">{{sel.px}}</span>
+          <span class="mono" style="font-size: 15px; color: #3FD19B">{{sel.chg}}</span>
+          <div style="flex-grow: 1"></div>
+          <span class="pill">Diario</span>
+          <span class="pill">Mercado: {{sel.regime}}</span>
+        </div>
+        <div style="flex-grow: 1; min-height: 0; border: 1px solid #1E242E; border-radius: 12px; background: #0F131A; position: relative">
+          <svg width="100%" height="100%" viewBox="0 0 820 560" preserveAspectRatio="none" role="img" aria-label="Gráfico de velas de {{sel.t}} con medias, marcadores de directivos y opciones, y niveles de entrada, stop y objetivo">
+            <sc-for list="{{grid}}" as="g" hint-placeholder-count="5">
+              <line x1="0" x2="760" y1="{{g.y}}" y2="{{g.y}}" stroke="#1A2029" stroke-width="1"></line>
+              <text x="768" y="{{g.ty}}" fill="#6F7A89" font-size="11" font-family="IBM Plex Mono">{{g.label}}</text>
+            </sc-for>
+            <line x1="0" x2="760" y1="{{lv.target}}" y2="{{lv.target}}" stroke="#3FD19B" stroke-width="1.5" stroke-dasharray="6 4"></line>
+            <line x1="0" x2="760" y1="{{lv.entry}}" y2="{{lv.entry}}" stroke="#6E9BFF" stroke-width="1.5" stroke-dasharray="6 4"></line>
+            <line x1="0" x2="760" y1="{{lv.stop}}" y2="{{lv.stop}}" stroke="#FF8A7A" stroke-width="1.5" stroke-dasharray="6 4"></line>
+            <polyline points="{{sma20}}" fill="none" stroke="#6E9BFF" stroke-width="1.5" opacity="0.8"></polyline>
+            <polyline points="{{sma50}}" fill="none" stroke="#9AA4B2" stroke-width="1.5" opacity="0.6"></polyline>
+            <sc-for list="{{candles}}" as="k" hint-placeholder-count="60">
+              <line x1="{{k.cx}}" x2="{{k.cx}}" y1="{{k.hi}}" y2="{{k.lo}}" stroke="{{k.color}}" stroke-width="1"></line>
+              <rect x="{{k.x}}" y="{{k.top}}" width="8" height="{{k.h}}" fill="{{k.color}}" rx="1"></rect>
+            </sc-for>
+            <sc-for list="{{insMarks}}" as="m" hint-placeholder-count="2">
+              <rect x="{{m.x}}" y="{{m.y}}" width="11" height="11" fill="#F4B740" transform="{{m.rot}}"></rect>
+            </sc-for>
+            <sc-for list="{{optMarks}}" as="m" hint-placeholder-count="1">
+              <circle cx="{{m.x}}" cy="{{m.y}}" r="6" fill="#B79CFF"></circle>
+            </sc-for>
+          </svg>
+          <div style="position: absolute; left: 16px; top: 12px; display: flex; gap: 14px; font-size: 12px; color: #C4CCD8">
+            <span><span style="color: #6E9BFF">━</span> Media 20</span>
+            <span><span style="color: #9AA4B2">━</span> Media 50</span>
+            <span><span style="color: #F4B740">◆</span> Compra de directivo</span>
+            <span><span style="color: #B79CFF">●</span> Opciones inusuales</span>
+          </div>
+        </div>
+      </section>
+
+      <aside aria-label="Orden de práctica" style="width: 340px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; padding: 20px; box-sizing: border-box; border-left: 1px solid #1E242E; background: #0F131A; overflow: auto">
+        <h2 style="margin: 0; font-size: 18px; font-weight: 600">Orden de práctica · {{sel.t}}</h2>
+        <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 10px; background: #12161D; border: 1px solid #1E242E">
+          <span class="lbl">Regla</span>
+          <span style="font-size: 14px; line-height: 1.4">{{sel.rule}}</span>
+          <span style="font-size: 13px; color: #9AA4B2">Fuera de muestra: {{sel.n}} operaciones · acierto {{sel.win}} · +{{sel.r}}R medio</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+          <div style="display: flex; flex-direction: column; gap: 4px"><span class="lbl" style="color: #9BBAFF">Entrada</span><span class="mono" style="font-size: 16px">{{sel.entry}}</span></div>
+          <div style="display: flex; flex-direction: column; gap: 4px"><span class="lbl" style="color: #FF8A7A">Stop</span><span class="mono" style="font-size: 16px">{{sel.stop}}</span></div>
+          <div style="display: flex; flex-direction: column; gap: 4px"><span class="lbl" style="color: #3FD19B">Objetivo</span><span class="mono" style="font-size: 16px">{{sel.target}}</span></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <label for="risk" class="lbl">Riesgo por operación</label>
+          <input id="risk" class="f" type="text" value="1,0 % · $250" />
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 10px; border: 1px solid #1E242E">
+          <div style="display: flex; justify-content: space-between; font-size: 14px"><span style="color: #9AA4B2">Tamaño</span><span class="mono">{{sel.shares}} acciones</span></div>
+          <div style="display: flex; justify-content: space-between; font-size: 14px"><span style="color: #9AA4B2">Importe</span><span class="mono">{{sel.notional}}</span></div>
+          <div style="display: flex; justify-content: space-between; font-size: 14px"><span style="color: #9AA4B2">Pérdida si toca el stop</span><span class="mono" style="color: #FF8A7A">− $250 (−1R)</span></div>
+          <div style="display: flex; justify-content: space-between; font-size: 14px"><span style="color: #9AA4B2">Salida por tiempo</span><span class="mono">15 sesiones</span></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 10px; border: 1px solid #4F4470; background: #15121F">
+          <span class="lbl" style="color: #B79CFF">Alternativa en opciones</span>
+          <span class="mono" style="font-size: 14px">{{sel.call}}</span>
+          <span style="font-size: 12px; line-height: 1.4; color: #9AA4B2">Precio estimado con modelo. Revisa interés abierto y spread antes de operar.</span>
+        </div>
+        <div style="flex-grow: 1"></div>
+        <button class="btn primary" type="button" style="width: 100%">Enviar orden bracket de práctica</button>
+        <span style="font-size: 12px; color: #9AA4B2; text-align: center">Entrada en la apertura siguiente con stop y objetivo desde el inicio.</span>
+      </aside>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { i: 0 }; }
+  renderVals() {
+    const data = [
+      { t: 'ACME', px: 48.20, chg: '+2,1 %', rule: 'Compra de directivos · tendencia alcista', r: '0,94', n: 23, win: '61 %', wf: true, ins: true, opt: false, seed: 3, regime: 'lateral', call: 'ACME 20 nov 2026 45C · Δ 0,66 · ~$4,90' },
+      { t: 'NOVA', px: 131.75, chg: '+1,4 %', rule: 'Flujo alcista de opciones · RSI > 60', r: '0,71', n: 18, win: '56 %', wf: true, ins: false, opt: true, seed: 11, regime: 'lateral', call: 'NOVA 20 nov 2026 125C · Δ 0,64 · ~$12,30' },
+      { t: 'KLTR', px: 22.08, chg: '+3,8 %', rule: 'Ruptura de 20 días · directivos', r: '0,62', n: 14, win: '57 %', wf: false, ins: true, opt: false, seed: 7, regime: 'bajista', call: 'KLTR 20 nov 2026 21C · Δ 0,65 · ~$2,15' },
+      { t: 'ORBX', px: 76.40, chg: '+0,9 %', rule: 'Clúster de 2+ directivos', r: '0,55', n: 12, win: '58 %', wf: false, ins: true, opt: true, seed: 5, regime: 'lateral', call: 'ORBX 20 nov 2026 72,5C · Δ 0,66 · ~$7,40' },
+    ];
+    const i = this.state.i;
+    const s = data[i];
+    let x = s.seed * 9301 + 49297;
+    const rnd = () => { x = (x * 9301 + 49297) % 233280; return x / 233280; };
+    const n = 64, closes = [], candles = [];
+    let p = s.px * 0.86;
+    for (let k = 0; k < n; k++) {
+      const o = p, c = o * (1 + (rnd() - 0.46) * 0.045);
+      const hi = Math.max(o, c) * (1 + rnd() * 0.015), lo = Math.min(o, c) * (1 - rnd() * 0.015);
+      candles.push({ o, c, hi, lo }); closes.push(c); p = c;
+    }
+    const scale = s.px / p; candles.forEach(k => { k.o *= scale; k.c *= scale; k.hi *= scale; k.lo *= scale; });
+    const atr = s.px * 0.028, entry = s.px, stop = entry - 1.5 * atr, target = entry + 3 * atr;
+    const all = candles.flatMap(k => [k.hi, k.lo]).concat([stop, target]);
+    const max = Math.max(...all) * 1.01, min = Math.min(...all) * 0.99;
+    const Y = v => 20 + (max - v) / (max - min) * 520;
+    const X = k => 12 + k * 11.6;
+    const out = candles.map((k, j) => {
+      const up = k.c >= k.o; const top = Y(Math.max(k.o, k.c));
+      return { x: X(j), cx: X(j) + 4, hi: Y(k.hi), lo: Y(k.lo), top, h: Math.max(1.5, Y(Math.min(k.o, k.c)) - top), color: up ? '#3FD19B' : '#FF8A7A' };
+    });
+    const sma = w => candles.map((_, j) => j < w - 1 ? null : candles.slice(j - w + 1, j + 1).reduce((a, b) => a + b.c, 0) / w)
+      .map((v, j) => v == null ? null : `${X(j) + 4},${Y(v)}`).filter(Boolean).join(' ');
+    const grid = [0, 1, 2, 3, 4].map(g => { const v = max - g * (max - min) / 4; const y = Y(v); return { y, ty: y + 4, label: v.toFixed(2) }; });
+    const fmt = v => '$' + v.toFixed(2).replace('.', ',');
+    const risk = entry - stop, shares = Math.floor(250 / risk);
+    return {
+      count: `${data.length}`,
+      cands: data.map((c, j) => ({ ...c, on: j === i, cls: j === i ? 'cand on' : 'cand', pick: () => this.setState({ i: j }) })),
+      sel: { ...s, px: fmt(s.px), entry: fmt(entry), stop: fmt(stop), target: fmt(target), shares, notional: fmt(shares * entry) },
+      candles: out, grid, sma20: sma(20), sma50: sma(50),
+      lv: { entry: Y(entry), stop: Y(stop), target: Y(target) },
+      insMarks: s.ins ? [out[40], out[52]].map(k => ({ x: k.cx - 5.5, y: k.lo + 10, rot: `rotate(45 ${k.cx} ${k.lo + 15.5})` })) : [],
+      optMarks: s.opt ? [out[57]].map(k => ({ x: k.cx, y: k.hi - 14 })) : [],
+    };
+  }
+}
+</script>
+</body>
+</html>
