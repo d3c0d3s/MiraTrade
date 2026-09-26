@@ -169,6 +169,12 @@ def main(argv: list[str] | None = None) -> None:
     de.add_argument("--out", default="reports/demo")
     de.set_defaults(func=cmd_demo)
 
+    try:                                    # needs the [schwab] extra
+        from miratrade.broker_cli import add_parser as add_schwab
+        add_schwab(sub)
+    except ImportError:
+        pass
+
     a = ap.parse_args(argv)
     a.func(a)
 

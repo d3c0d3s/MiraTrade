@@ -59,6 +59,44 @@ Every threshold is in `miratrade/config.py`.
   stress-test delisted exits.
 - **Limits:** Paper-trade validated rules before sizing up. Costs and slippage are not modelled.
 
+## Schwab account (personal developer app)
+
+```bash
+pip install -e ".[yf,dev,schwab]"
+miratrade schwab setup        # app key, secret, callback URL -> Windows Credential Manager
+miratrade schwab login        # sign in in the browser, paste back the 127.0.0.1 address (lasts 7 days)
+miratrade schwab status       # login expiry, live-trading switch, stop state
+miratrade schwab accounts     # balances and positions (account numbers masked)
+miratrade schwab quote SPY AAPL
+miratrade schwab chain ACME --dte 30,45,60 --delta 0.65
+miratrade schwab orders --days 7
+miratrade schwab transactions --days 30
+miratrade schwab buy ACME --limit 48.20 --stop 45.70 --target 53.20 --preview-only
+miratrade schwab stop-all     # cancel pending entries, block new ones (position stops stay)
+```
+
+Requirements on the Schwab side: an approved ("Ready For Use") app subscribed to *Accounts and
+Trading Production* and *Market Data Production*, with the callback URL registered exactly as
+entered in `setup` (e.g. `https://127.0.0.1:8182`).
+
+`brokers/` holds one interface (`BrokerClient`) with a Schwab implementation (via
+[schwab-py](https://github.com/alexgolec/schwab-py)) and a simulated one for practice. Every
+order goes through `brokers/guard.py`:
+
+- **Risk checks** (`RiskParams`): every entry has a stop (sent as a bracket: entry → OCO of
+  target + stop, good-till-cancel), limit entries only, risk per trade ≤ 2% (1% target), order
+  value ≤ 25% of equity and ≤ buying power, ≤ 5 positions, no entries after a 3% daily loss,
+  no stocks under $5.
+- **Preview first**: Schwab's preview of the *identical* order within 2 minutes, used once.
+- **Real money off by default**: `%APPDATA%\MiraTrade\settings.json` must contain
+  `{"broker": {"live_trading": true}}`, and each order needs the typed confirmation
+  `BUY <qty> <symbol>`.
+- **No automatic retries**: if a reply is lost, the guard looks the order up and reports.
+- **Journal**: `%APPDATA%\MiraTrade\orders.jsonl` (masked account, no credentials).
+
+Tokens and keys never touch the repo or the logs. `miratrade schwab diagnose` saves raw
+read-only responses (masked) to `%APPDATA%\MiraTrade` to check the parsers against your account.
+
 ## Data notes
 
 - SEC requires a contact User-Agent: `export MIRATRADE_SEC_UA="Your Name you@example.com"`.

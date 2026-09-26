@@ -90,6 +90,31 @@ class SurvivorshipParams:
 
 
 @dataclass
+class RiskParams:
+    """Checked before any order reaches a broker (see ``brokers/guard.py``)."""
+    risk_per_trade_pct: float = 1.0     # loss at the stop, as % of account equity
+    risk_warn_pct: float = 2.0          # hard ceiling: above this the order is refused
+    max_positions: int = 5
+    daily_loss_limit_pct: float = 3.0   # today's loss past this % of equity: alerts only
+    max_order_value_pct: float = 25.0   # one order's cost as % of equity
+    min_price: float = 5.0
+    allow_market_orders: bool = False   # entries are limit orders: no surprise fills
+    require_stop: bool = True           # every entry carries its exit orders (bracket)
+
+
+@dataclass
+class BrokerParams:
+    live_trading: bool = False          # real orders need this AND a typed confirmation per order
+    preview_ttl_s: int = 120            # a preview is valid this long; place() needs a fresh one
+    token_warn_hours: int = 24          # warn when the 7-day Schwab refresh token is this close
+    callback_url: str = "https://127.0.0.1:8182"
+
+
+# User settings (live trading on/off, risk limits) live outside the repo.
+APP_DIR = Path(os.environ.get("MIRATRADE_HOME", Path(os.environ.get("APPDATA", Path.home())) / "MiraTrade"))
+
+
+@dataclass
 class Config:
     insider: InsiderParams = field(default_factory=InsiderParams)
     flow: FlowParams = field(default_factory=FlowParams)
@@ -99,3 +124,26 @@ class Config:
     edge: EdgeParams = field(default_factory=EdgeParams)
     regime: RegimeParams = field(default_factory=RegimeParams)
     survivorship: SurvivorshipParams = field(default_factory=SurvivorshipParams)
+    risk: RiskParams = field(default_factory=RiskParams)
+    broker: BrokerParams = field(default_factory=BrokerParams)
+
+
+def load_user_config(path: Path | None = None) -> Config:
+    """Defaults overlaid with ``%APPDATA%/MiraTrade/settings.json`` (``{"risk": {...},
+    "broker": {...}}``). Unknown keys are rejected so a typo can't silently disable a limit."""
+    import json
+
+    cfg = Config()
+    path = path or APP_DIR / "settings.json"
+    if not path.exists():
+        return cfg
+    data = json.loads(path.read_text(encoding="utf-8"))
+    for section, values in data.items():
+        target = getattr(cfg, section, None)
+        if target is None:
+            raise ValueError(f"settings.json: unknown section {section!r}")
+        for key, value in values.items():
+            if not hasattr(target, key):
+                raise ValueError(f"settings.json: unknown setting {section}.{key}")
+            setattr(target, key, value)
+    return cfg

@@ -4,3 +4,4 @@ __pycache__/
 .cache/
 reports/
 .venv/
+schwab_diagnose.json
