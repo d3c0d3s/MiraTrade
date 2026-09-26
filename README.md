@@ -12,8 +12,10 @@ pip install -e ".[yf,dev]"
 miratrade demo                               # offline: synthetic market with a planted edge
 miratrade analyze --days 90                  # live: SEC Form 4 + prices, last 90 days
 miratrade analyze --days 90 --flow flow.csv  # add an options-flow export
-miratrade snapshot AAPL NVDA TSLA            # save today's CBOE chains (run daily to build flow history)
+miratrade snapshot AAPL NVDA TSLA            # today's option chains from your broker (run daily for flow history)
 ```
+
+Prices come from **your own broker account** (see *Market data* below); connect Schwab first.
 
 Output goes to `reports/`: `edge_report.md`, `trades.csv`, `rules.csv` (every rule tested) and
 `rules_options.csv` (the same rules measured on calls) and `candidates.csv` (tickers whose latest
@@ -113,9 +115,31 @@ order goes through `brokers/guard.py`:
 Tokens and keys never touch the repo or the logs. `miratrade schwab diagnose` saves raw
 read-only responses (masked) to `%APPDATA%\MiraTrade` to check the parsers against your account.
 
+## Market data: each user's own broker account
+
+MiraTrade has no data licence of its own: every user connects **their own** account with **their
+own** personal developer keys, and data is never shared between users.
+
+| Need | Source | Setting (`settings.json` → `data`, or Configuración in the app) |
+|---|---|---|
+| Daily price history (analysis, scan, charts) | Schwab: `miratrade schwab setup` + `login` | `price_source: "schwab"` (default) |
+| Live quotes, option chains, `miratrade snapshot` | Schwab, or E*TRADE: `miratrade etrade setup` + `login` | `quote_broker: "schwab"` / `"etrade"` |
+| Personal research only | Yahoo (yfinance) / Stooq, CBOE's page | `price_source: "research"`, off by default |
+
+- **Schwab**: individual developer access covers your own accounts. Offering MiraTrade to other
+  Schwab clients requires Schwab's commercial approval first.
+- **E*TRADE**: an individual consumer key is for your own accounts ("non-commercial use"); sign the
+  market data agreement for real-time quotes (otherwise they are delayed; `miratrade etrade
+  diagnose` says which). The API has no price history, and MiraTrade connects it read-only: orders
+  go only through Schwab and the order guard. `pip install -e ".[etrade]"`.
+- **Research sources** allow personal, non-commercial use at most. They have their own cache
+  folder and must never feed anything that is shared or sold.
+
 ## Data notes
 
-- SEC requires a contact User-Agent: `export MIRATRADE_SEC_UA="Your Name you@example.com"`.
+- SEC requires a contact User-Agent: `export MIRATRADE_SEC_UA="Your Name you@example.com"`. Every
+  MiraTrade process shares one budget of 8 requests/second (the SEC allows 10 per address) and
+  pauses all of them when the SEC answers 429.
 - The first run over the current quarter downloads each Form 4 (about 1,000 a day at 8 requests
   per second), so it takes a while. Everything is cached in `.cache/`.
 - Free *historical* options flow doesn't exist. Either export 90 days from a flow vendor and pass

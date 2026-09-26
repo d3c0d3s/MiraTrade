@@ -106,7 +106,7 @@ def write_settings(cfg: Config, path: Path = SETTINGS_PATH) -> None:
     """Save the user-editable sections; re-read to make sure the file is valid."""
     from dataclasses import asdict
 
-    data = {"risk": asdict(cfg.risk), "broker": asdict(cfg.broker)}
+    data = {"risk": asdict(cfg.risk), "broker": asdict(cfg.broker), "data": asdict(cfg.data)}
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")

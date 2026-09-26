@@ -101,11 +101,61 @@ def parse_cboe_chain(payload: dict, asof: date) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=FLOW_COLUMNS)
 
 
+def chain_to_flow(chain: pd.DataFrame, asof: date, underlying: float | None = None) -> pd.DataFrame:
+    """A broker option chain (``BrokerClient.option_chain``) as one day of ``FLOW_COLUMNS``:
+    volume, open interest and premium (volume × mid × 100) per contract. The aggressor side is not
+    in a chain, so it stays unknown (the flow filter then treats the print as a buy)."""
+    if chain is None or chain.empty:
+        return pd.DataFrame(columns=FLOW_COLUMNS)
+    c = chain[pd.to_numeric(chain["volume"], errors="coerce").fillna(0) > 0].copy()
+    mid = c["mark"].where(c["mark"].notna(), (c["bid"] + c["ask"]) / 2)
+    return pd.DataFrame({
+        "date": pd.Timestamp(asof), "ticker": c["underlying"], "expiry": pd.to_datetime(c["expiry"]),
+        "type": c["type"], "strike": c["strike"], "volume": c["volume"], "open_interest": c["open_interest"],
+        "premium": c["volume"] * mid * 100, "underlying": underlying, "side": "",
+    }, columns=FLOW_COLUMNS).reset_index(drop=True)
+
+
+def snapshot_broker(tickers: list[str], broker, asof: date | None = None, days: int = 120,
+                    out_dir: Path = CACHE_DIR / "flow") -> pd.DataFrame:
+    """Today's option chains from the user's own broker account (Schwab or E*TRADE), saved as one
+    day of flow history. Run it once a day after the close to build your own history."""
+    from datetime import timedelta
+
+    asof = asof or date.today()
+    frames = []
+    spots = {}
+    try:
+        spots = {s: q.last for s, q in broker.quotes([t.upper() for t in tickers]).items()}
+    except Exception:
+        pass
+    for t in tickers:
+        t = t.upper()
+        try:
+            chain = broker.option_chain(t, asof + timedelta(days=1), asof + timedelta(days=days))
+        except Exception as e:                      # one ticker failing must not lose the others
+            print(f"  {t}: sin cadena ({e})")
+            continue
+        frames.append(chain_to_flow(chain, asof, spots.get(t)))
+    df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=FLOW_COLUMNS)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    df.to_csv(out_dir / f"{broker.name}_{asof:%Y%m%d}.csv", index=False)
+    return df
+
+
 def snapshot_cboe(tickers: list[str], asof: date | None = None,
                   out_dir: Path = CACHE_DIR / "flow") -> pd.DataFrame:
-    """Fetch today's delayed chains and append them to the local flow history."""
+    """Fetch today's delayed chains from CBOE's public page. Personal research only: its terms do
+    not allow commercial use, so it needs the "research" data source switched on in settings."""
     import requests
 
+    from miratrade.config import load_user_config
+    from miratrade.data.prices import PriceSourceError
+
+    if load_user_config().data.price_source != "research":
+        raise PriceSourceError("La página de CBOE es solo para investigación personal. Usa "
+                               "`miratrade snapshot` con tu bróker, o elige la fuente «Webs públicas» en Configuración.")
     asof = asof or date.today()
     frames = []
     for t in tickers:

@@ -200,10 +200,19 @@ def cmd_experiment(a) -> None:
 
 
 def cmd_snapshot(a) -> None:
-    from miratrade.data.options import snapshot_cboe
+    from miratrade.config import load_user_config
+    from miratrade.data.options import snapshot_broker, snapshot_cboe
 
-    df = snapshot_cboe(a.tickers)
-    print(f"Saved {len(df)} option rows for {df['ticker'].nunique() if len(df) else 0} tickers.")
+    source = a.source or load_user_config().data.quote_broker
+    if source == "cboe":
+        df = snapshot_cboe(a.tickers)                   # research only: refuses unless enabled
+    elif source == "etrade":
+        from miratrade.brokers.etrade import EtradeBroker
+        df = snapshot_broker(a.tickers, EtradeBroker())
+    else:
+        from miratrade.brokers.schwab import SchwabBroker
+        df = snapshot_broker(a.tickers, SchwabBroker())
+    print(f"Saved {len(df)} option rows for {df['ticker'].nunique() if len(df) else 0} tickers ({source}).")
 
 
 def cmd_scan(a) -> None:
@@ -253,8 +262,10 @@ def main(argv: list[str] | None = None) -> None:
     an.add_argument("--out", default="reports")
     an.set_defaults(func=cmd_analyze)
 
-    sn = sub.add_parser("snapshot", help="save today's CBOE option chains to .cache/flow")
+    sn = sub.add_parser("snapshot", help="save today's option chains from your broker to .cache/flow")
     sn.add_argument("tickers", nargs="+")
+    sn.add_argument("--source", choices=["schwab", "etrade", "cboe"],
+                    help="default: data.quote_broker in settings; cboe = personal research only")
     sn.set_defaults(func=cmd_snapshot)
 
     sc = sub.add_parser("scan", help="new events of the last N days and what similar past events did")
@@ -288,9 +299,15 @@ def main(argv: list[str] | None = None) -> None:
         add_schwab(sub)
     except ImportError:
         pass
+    from miratrade.etrade_cli import add_parser as add_etrade   # OAuth imported only when used
+    add_etrade(sub)
 
     a = ap.parse_args(argv)
-    a.func(a)
+    from miratrade.data.prices import PriceSourceError
+    try:
+        a.func(a)
+    except PriceSourceError as e:           # no connected source: say what to do, no traceback
+        raise SystemExit(str(e))
 
 
 if __name__ == "__main__":

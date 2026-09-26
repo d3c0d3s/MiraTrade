@@ -1,11 +1,11 @@
-"""Configuración: Schwab login, risk limits and the real-money switch."""
+"""Configuración: market data source, Schwab and E*TRADE logins, risk limits and the real-money switch."""
 from __future__ import annotations
 
 import webbrowser
 from pathlib import Path
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QGridLayout,
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QGridLayout,
                                QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea,
                                QSpinBox, QVBoxLayout, QWidget)
 
@@ -33,15 +33,89 @@ class CredentialsDialog(QDialog):
         form.addRow(buttons)
 
 
+class EtradeKeysDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Claves de tu cuenta de E*TRADE")
+        self.key = QLineEdit()
+        self.secret = QLineEdit()
+        self.secret.setEchoMode(QLineEdit.Password)
+        self.sandbox = QCheckBox("Son claves de sandbox (pruebas)")
+        form = QFormLayout(self)
+        form.addRow(muted("E*TRADE → Developer: tu consumer key de uso individual, solo para tus propias cuentas. "
+                          "Firma allí el acuerdo de la API y, para cotizaciones en tiempo real, el de datos de "
+                          "mercado. Se guardan en el Administrador de credenciales de Windows."))
+        form.addRow("Consumer key", self.key)
+        form.addRow("Consumer secret", self.secret)
+        form.addRow(self.sandbox)
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        form.addRow(buttons)
+
+
+SOURCE_NOTE = {
+    "schwab": "Historial diario desde tu propia cuenta de Schwab, con tu app de desarrollador personal.",
+    "research": "Yahoo / Stooq sin acuerdo de licencia: solo para tu investigación personal y no comercial. "
+                "No uses estos datos en nada que compartas o vendas.",
+}
+
+
 class SettingsPage(QWidget):
     settings_changed = Signal()
 
-    def __init__(self, settings_path: Path | None = None, auth=None):
+    def __init__(self, settings_path: Path | None = None, auth=None, etrade_auth=None):
         super().__init__()
         self.setObjectName("page")
         self.settings_path = Path(settings_path or data.SETTINGS_PATH)
         self._auth = auth
+        self._etrade = etrade_auth
         self.cfg = data.read_settings(self.settings_path)
+
+        # Market data: each user's own broker account
+        from miratrade.data.prices import SOURCES
+        self.price_source = QComboBox()
+        for key, label in SOURCES.items():
+            self.price_source.addItem(label, key)
+        self.price_source.setCurrentIndex(max(0, self.price_source.findData(self.cfg.data.price_source)))
+        self.price_source.setAccessibleName("Fuente del historial de precios")
+        self.quote_broker = QComboBox()
+        self.quote_broker.addItem("Schwab", "schwab")
+        self.quote_broker.addItem("E*TRADE", "etrade")
+        self.quote_broker.setCurrentIndex(max(0, self.quote_broker.findData(self.cfg.data.quote_broker)))
+        self.quote_broker.setAccessibleName("Bróker para cotizaciones y cadenas de opciones")
+        self.source_note = muted("")
+        self.price_source.currentIndexChanged.connect(self._source_changed)
+        src_form = QFormLayout()
+        src_form.addRow("Historial de precios", self.price_source)
+        src_form.addRow("Cotizaciones y opciones", self.quote_broker)
+        src_w = QWidget()
+        src_w.setLayout(src_form)
+        market = card(src_w, self.source_note,
+                      muted("Cada usuario conecta su propia cuenta; MiraTrade no comparte tus datos con nadie. "
+                            "E*TRADE no ofrece historial de precios: el historial viene de Schwab."),
+                      title="Datos de mercado")
+        self._source_changed()
+
+        # E*TRADE (read-only)
+        self.etrade_status = QLabel()
+        self.etrade_status.setWordWrap(True)
+        et_keys = QPushButton("Guardar claves…")
+        et_keys.clicked.connect(self.edit_etrade_keys)
+        self.etrade_login_btn = QPushButton("Iniciar sesión en E*TRADE…")
+        self.etrade_login_btn.clicked.connect(self.etrade_login)
+        et_out = QPushButton("Cerrar sesión")
+        et_out.clicked.connect(self.etrade_logout)
+        et_row = QHBoxLayout()
+        for b in (et_keys, self.etrade_login_btn, et_out):
+            et_row.addWidget(b)
+        et_row.addStretch(1)
+        et_row_w = QWidget()
+        et_row_w.setLayout(et_row)
+        etrade = card(self.etrade_status, et_row_w,
+                      muted("Solo lectura: saldos, cotizaciones y cadenas de opciones. La sesión dura hasta la "
+                            "medianoche de Nueva York. Las órdenes se envían solo por Schwab."),
+                      title="Cuenta de E*TRADE")
 
         # Schwab
         self.schwab_status = QLabel()
@@ -108,7 +182,7 @@ class SettingsPage(QWidget):
         title.setObjectName("h1")
         body.addWidget(title)
         body.addWidget(muted(f"Se guarda en {self.settings_path}"))
-        for c in (schwab, risk, live):
+        for c in (market, schwab, etrade, risk, live):
             body.addWidget(c)
         body.addLayout(foot)
         body.addStretch(1)
@@ -122,6 +196,7 @@ class SettingsPage(QWidget):
         outer.setContentsMargins(24, 20, 24, 20)
         outer.addWidget(scroll)
         self.refresh_schwab()
+        self.refresh_etrade()
 
     @staticmethod
     def _dspin(value: float, lo: float, hi: float, suffix: str) -> QDoubleSpinBox:
@@ -194,6 +269,68 @@ class SettingsPage(QWidget):
         self.refresh_schwab()
         self.settings_changed.emit()
 
+    # ------------------------------------------------------------------ market data and E*TRADE
+
+    def _source_changed(self, *_):
+        key = self.price_source.currentData()
+        self.source_note.setText(SOURCE_NOTE.get(key, ""))
+        self.source_note.setStyleSheet("color: #FFB4AA;" if key == "research" else "")
+
+    @property
+    def etrade(self):
+        if self._etrade is None:
+            from miratrade.brokers.etrade import EtradeAuth
+            self._etrade = EtradeAuth()
+        return self._etrade
+
+    def refresh_etrade(self) -> None:
+        try:
+            if not self.etrade.configured():
+                text = "Sin claves. Pulsa «Guardar claves…»."
+            else:
+                h = self.etrade.hours_left()
+                env = " (sandbox)" if self.etrade.env == "sandbox" else ""
+                text = (f"Claves guardadas{env}. Falta iniciar sesión." if h is None else
+                        "La sesión terminó a medianoche. Inicia sesión otra vez." if h <= 0 else
+                        f"Conectado{env}. La sesión dura {h:.1f} horas más.")
+        except Exception as e:
+            text = f"No se pudo leer el estado: {e}"
+        self.etrade_status.setText(text)
+
+    def edit_etrade_keys(self) -> None:
+        dlg = EtradeKeysDialog(self)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        try:
+            self.etrade.setup(dlg.key.text(), dlg.secret.text(), dlg.sandbox.isChecked())
+        except ValueError as e:
+            QMessageBox.warning(self, "E*TRADE", str(e))
+        self.refresh_etrade()
+
+    def etrade_login(self) -> None:
+        if not self.etrade.configured():
+            QMessageBox.information(self, "E*TRADE", "Guarda primero tus claves de E*TRADE.")
+            return
+        try:
+            webbrowser.open(self.etrade.login_url())
+        except Exception as e:
+            QMessageBox.warning(self, "E*TRADE", f"No se pudo empezar el inicio de sesión: {e}")
+            return
+        code, ok = QInputDialog.getText(self, "Iniciar sesión en E*TRADE",
+                                        "Inicia sesión en la ventana del navegador y acepta. E*TRADE te muestra\n"
+                                        "un código de verificación: cópialo y pégalo aquí:")
+        if not ok or not code.strip():
+            return
+        try:
+            self.etrade.complete_login(code)
+        except Exception as e:
+            QMessageBox.warning(self, "E*TRADE", f"No se pudo iniciar sesión: {e}")
+        self.refresh_etrade()
+
+    def etrade_logout(self) -> None:
+        self.etrade.logout()
+        self.refresh_etrade()
+
     # ------------------------------------------------------------------ settings
 
     def _confirm_live(self, on: bool) -> None:
@@ -218,6 +355,16 @@ class SettingsPage(QWidget):
         r.min_price = self.min_price.value()
         r.max_positions = self.max_positions.value()
         self.cfg.broker.live_trading = self.live.isChecked()
+        if self.price_source.currentData() == "research" and self.cfg.data.price_source != "research":
+            answer = QMessageBox.warning(
+                self, "Webs públicas",
+                "Yahoo y Stooq no tienen un acuerdo de licencia con MiraTrade: sus datos sirven solo para tu "
+                "investigación personal y no comercial. ¿Usarlos para tus análisis?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if answer != QMessageBox.Yes:
+                self.price_source.setCurrentIndex(self.price_source.findData(self.cfg.data.price_source))
+        self.cfg.data.price_source = self.price_source.currentData()
+        self.cfg.data.quote_broker = self.quote_broker.currentData()
         if r.risk_per_trade_pct > r.risk_warn_pct:
             QMessageBox.warning(self, "Riesgo", "El riesgo por operación no puede superar el techo.")
             return

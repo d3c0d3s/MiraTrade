@@ -144,6 +144,16 @@ class BrokerParams:
     callback_url: str = "https://127.0.0.1:8182"
 
 
+@dataclass
+class DataParams:
+    """Where market data comes from. Every user connects their OWN broker account, under that
+    broker's personal-use API terms; MiraTrade never redistributes one user's data to another."""
+    price_source: str = "schwab"        # daily history: "schwab" | "research" (see below)
+    quote_broker: str = "schwab"        # live quotes and option chains: "schwab" | "etrade"
+    # "research" = public web sources (Yahoo via yfinance, Stooq, CBOE's page). Their terms allow
+    # personal, non-commercial use at most: off by default, never the default of a shipped app.
+
+
 # User settings (live trading on/off, risk limits) live outside the repo.
 APP_DIR = Path(os.environ.get("MIRATRADE_HOME", Path(os.environ.get("APPDATA", Path.home())) / "MiraTrade"))
 
@@ -162,6 +172,7 @@ class Config:
     survivorship: SurvivorshipParams = field(default_factory=SurvivorshipParams)
     risk: RiskParams = field(default_factory=RiskParams)
     broker: BrokerParams = field(default_factory=BrokerParams)
+    data: DataParams = field(default_factory=DataParams)
 
 
 def load_user_config(path: Path | None = None) -> Config:

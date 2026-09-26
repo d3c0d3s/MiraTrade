@@ -21,7 +21,7 @@ PAGES = ("Señales", "Práctica", "Reportes", "Configuración")
 
 class MainWindow(QMainWindow):
     def __init__(self, reports_dir: Path | None = None, settings_path: Path | None = None, auth=None,
-                 scan_dir: Path | None = None):
+                 scan_dir: Path | None = None, etrade_auth=None):
         super().__init__()
         self.setWindowTitle(f"MiraTrade {__version__}")
         self.resize(1440, 900)
@@ -32,7 +32,7 @@ class MainWindow(QMainWindow):
         self.pages = QStackedWidget()
         self.signals = SignalsPage(reports_dir, scan_dir)
         self.reports = ReportsPage(reports_dir)
-        self.settings = SettingsPage(self.settings_path, auth)
+        self.settings = SettingsPage(self.settings_path, auth, etrade_auth)
         for w in (self.signals, practice_page(), self.reports, self.settings):
             self.pages.addWidget(w)
         self.settings.settings_changed.connect(self.refresh_header)

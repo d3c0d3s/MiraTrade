@@ -74,9 +74,11 @@ def window(qtbot, tmp_path):
 
     QApplication.instance().setStyleSheet(QSS)
     _report(tmp_path / "reports", "r1")
+    from miratrade.brokers.etrade import EtradeAuth
+
     auth = SchwabAuth(CredentialStore(backend=MemoryKeyring()))
     w = MainWindow(reports_dir=tmp_path / "reports", settings_path=tmp_path / "settings.json", auth=auth,
-                   scan_dir=tmp_path / "scan")
+                   scan_dir=tmp_path / "scan", etrade_auth=EtradeAuth(CredentialStore(backend=MemoryKeyring())))
     qtbot.addWidget(w)
     return w
 
@@ -192,3 +194,22 @@ def test_scan_command_arguments(tmp_path):
     args = data.scan_command(7, "call45_40", tmp_path / "scan", tmp_path / "rep")
     assert args[args.index("scan") + 1:] == ["--days", "7", "--variant", "call45_40", "--save",
                                              str(tmp_path / "scan"), "--report", str(tmp_path / "rep")]
+
+
+def test_market_data_settings_need_consent_for_research_sources(window, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    s = window.settings
+    assert s.price_source.currentData() == "schwab" and "Sin claves" in s.etrade_status.text()
+    s.price_source.setCurrentIndex(s.price_source.findData("research"))
+    assert "investigación personal" in s.source_note.text()
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.No)
+    s.save()
+    saved = json.loads(s.settings_path.read_text(encoding="utf-8"))
+    assert saved["data"]["price_source"] == "schwab"                # declined: stays on the licensed source
+    s.price_source.setCurrentIndex(s.price_source.findData("research"))
+    s.quote_broker.setCurrentIndex(s.quote_broker.findData("etrade"))
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.Yes)
+    s.save()
+    saved = json.loads(s.settings_path.read_text(encoding="utf-8"))
+    assert saved["data"] == {"price_source": "research", "quote_broker": "etrade"}

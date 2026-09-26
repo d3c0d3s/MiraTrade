@@ -1,15 +1,33 @@
-"""Daily OHLCV bars. yfinance if installed, otherwise Stooq CSV; either way cached to disk."""
+"""Daily OHLCV bars, cached to disk, from the source chosen in settings (``data.price_source``).
+
+* ``schwab`` (default): the user's OWN Schwab account through their personal developer app
+  (``miratrade schwab setup`` / ``login``). Allowed by Schwab's individual-developer terms for
+  the account holder's own use; the data is never shared with other users.
+* ``research``: public web sources (Yahoo through yfinance, then Stooq). Their terms allow
+  personal, non-commercial use at most, so this is off by default and must be switched on by
+  hand for one's own research. It is never the default of a distributed app.
+
+Each source has its own cache folder, so research data never ends up feeding the licensed path.
+"""
 from __future__ import annotations
 
 import io
+import time
 from datetime import date
 from pathlib import Path
+from typing import Callable
 
 import pandas as pd
 
 from miratrade.config import CACHE_DIR
 
 OHLCV = ["open", "high", "low", "close", "volume"]
+SOURCES = {"schwab": "Schwab (tu cuenta)", "research": "Webs públicas: Yahoo / Stooq (solo investigación personal)"}
+SCHWAB_PACE_S = 0.6                     # ~100 requests/minute, under Schwab's 120/min for market data
+
+
+class PriceSourceError(RuntimeError):
+    """The chosen source cannot be used (not connected, or not allowed): the message says what to do."""
 
 
 def _normalise(df: pd.DataFrame) -> pd.DataFrame:
@@ -39,26 +57,74 @@ def _from_stooq(ticker: str, start: date, end: date) -> pd.DataFrame | None:
     return _normalise(pd.read_csv(io.StringIO(resp.text), index_col="Date"))
 
 
-def load_prices(tickers: list[str], start: date, end: date,
-                cache_dir: Path = CACHE_DIR / "prices") -> dict[str, pd.DataFrame]:
-    """Return ``{ticker: OHLCV frame}``; tickers with no data are silently dropped."""
-    cache_dir = Path(cache_dir)
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    out = {}
+def research_fetch(ticker: str, start: date, end: date) -> pd.DataFrame | None:
+    df = _from_yfinance(ticker, start, end)
+    return df if df is not None else _from_stooq(ticker, start, end)
+
+
+def schwab_fetcher(broker=None) -> Callable[[str, date, date], pd.DataFrame | None]:
+    """Daily bars from the user's Schwab account; raises ``PriceSourceError`` when not connected."""
+    from miratrade.brokers.schwab import SchwabAuth, SchwabBroker, hours_until_relogin
+
+    if broker is None:
+        auth = SchwabAuth()
+        hours = hours_until_relogin(auth) if auth.configured() else None
+        if not auth.configured() or hours is None or hours <= 0:
+            raise PriceSourceError(
+                "Los precios vienen de tu cuenta de Schwab y no hay una sesión activa. Conéctala en "
+                "Configuración (o con `miratrade schwab setup` y `miratrade schwab login`). Solo para tu "
+                "investigación personal puedes elegir la fuente «Webs públicas» en Configuración.")
+        broker = SchwabBroker(auth=auth)
+    last = [0.0]
+
+    def fetch(ticker: str, start: date, end: date) -> pd.DataFrame | None:
+        wait = SCHWAB_PACE_S - (time.monotonic() - last[0])
+        if wait > 0:
+            time.sleep(wait)
+        last[0] = time.monotonic()
+        df = broker.price_history(ticker.replace(".", "/"), start, end)   # Schwab writes BRK/B
+        return None if df is None or df.empty else _normalise(df)
+    return fetch
+
+
+def _source(source: str | None) -> str:
+    if source is None:
+        from miratrade.config import load_user_config
+        source = load_user_config().data.price_source
+    if source not in SOURCES:
+        raise ValueError(f"Unknown price source {source!r}: use one of {', '.join(SOURCES)}")
+    return source
+
+
+def load_prices(tickers: list[str], start: date, end: date, cache_dir: Path = CACHE_DIR / "prices",
+                source: str | None = None, fetch: Callable | None = None) -> dict[str, pd.DataFrame]:
+    """Return ``{ticker: OHLCV frame}``; tickers with no data are left out. ``fetch`` overrides
+    the download (tests)."""
+    source = _source(source)
+    # the research cache keeps its historical location; the licensed one gets its own folder
+    folder = Path(cache_dir) / "schwab" if source == "schwab" else Path(cache_dir)
+    folder.mkdir(parents=True, exist_ok=True)
+    out, missing = {}, []
     for t in sorted(set(tickers)):
-        path = cache_dir / f"{t}_{start:%Y%m%d}_{end:%Y%m%d}.csv"
+        path = folder / f"{t}_{start:%Y%m%d}_{end:%Y%m%d}.csv"
         if path.exists():
-            df = pd.read_csv(path, index_col="date", parse_dates=True)
+            out[t] = pd.read_csv(path, index_col="date", parse_dates=True)
         else:
-            try:
-                df = _from_yfinance(t, start, end)
-                if df is None:
-                    df = _from_stooq(t, start, end)
-            except Exception:  # network/data errors on one ticker must not kill the run
-                df = None
-            if df is None or df.empty:
-                continue
-            df.to_csv(path)
+            missing.append((t, path))
+    if not missing:
+        return out
+    if fetch is None:
+        fetch = schwab_fetcher() if source == "schwab" else research_fetch
+    for t, path in missing:
+        try:
+            df = fetch(t, start, end)
+        except PriceSourceError:
+            raise
+        except Exception:  # one ticker failing (unknown symbol, network) must not kill the run
+            df = None
+        if df is None or df.empty:
+            continue
+        df.to_csv(path)
         out[t] = df
     return out
 
