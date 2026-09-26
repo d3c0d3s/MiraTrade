@@ -147,7 +147,8 @@ def render(trades: pd.DataFrame, rules: pd.DataFrame, shown: pd.DataFrame, basel
     (all optional)."""
     out = [f"# MiraTrade edge report\n",
            f"Window: **{meta['start']} → {meta['end']}** · universe: {meta['n_tickers']} tickers · "
-           f"insider rows: {meta['n_insider']} · unusual option prints: {meta['n_unusual']}\n",
+           f"insider rows: {meta['n_insider']} · unusual option prints: {meta['n_unusual']} · "
+           f"13D/13G filings: {meta.get('n_ownership', 0)}\n",
            "Trades enter at the next open after a signal, with a "
            f"{meta['stop_atr']}×ATR stop, {meta['target_atr']}×ATR target and "
            f"{meta['max_hold']}-bar time stop. Results are in R (multiples of initial risk).\n"]

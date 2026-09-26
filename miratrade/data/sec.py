@@ -23,7 +23,7 @@ import pandas as pd
 from miratrade.config import CACHE_DIR, SEC_USER_AGENT
 
 INSIDER_COLUMNS = [
-    "accession", "filing_date", "trade_date", "ticker", "issuer", "owner", "owner_cik",
+    "accession", "filing_date", "trade_date", "ticker", "issuer", "issuer_cik", "owner", "owner_cik",
     "is_officer", "is_director", "is_ten_pct", "title", "code", "shares", "price",
     "value", "owned_after", "delta_own_pct",
 ]
@@ -110,6 +110,7 @@ def parse_bulk_zip(data: bytes) -> pd.DataFrame:
         "trade_date": _parse_sec_date(df["TRANS_DATE"]),
         "ticker": df["ISSUERTRADINGSYMBOL"].str.upper().str.strip(),
         "issuer": df["ISSUERNAME"],
+        "issuer_cik": df["ISSUERCIK"].str.lstrip("0") if "ISSUERCIK" in df else "",
         "owner": df["RPTOWNERNAME"],
         "owner_cik": df["RPTOWNERCIK"],
         "is_officer": rel.str.contains("Officer"),
@@ -154,6 +155,7 @@ def parse_form4_xml(xml: str, accession: str = "", filing_date: str | None = Non
             "trade_date": _text(tx, "transactionDate"),
             "ticker": _text(issuer, "issuerTradingSymbol").upper(),
             "issuer": _text(issuer, "issuerName"),
+            "issuer_cik": _text(issuer, "issuerCik").lstrip("0"),
             "owner": _text(owner, "reportingOwnerId/rptOwnerName"),
             "owner_cik": _text(owner, "reportingOwnerId/rptOwnerCik"),
             "is_officer": _flag(rel, "isOfficer"),

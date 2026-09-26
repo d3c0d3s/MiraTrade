@@ -2,7 +2,8 @@
 
 Entry candidates on a bar ``i`` (known at its close) are:
   * a technical setup (breakout / pullback / oversold bounce), or
-  * a fresh event (a new insider buy filing or a new day of bullish unusual flow).
+  * a fresh event (a new insider buy filing, a new day of bullish unusual flow, or a new
+    13D / non-index 13G ownership filing).
 Every candidate is traded the same way so that the *conditions* around it can be compared.
 """
 from __future__ import annotations
@@ -15,12 +16,16 @@ from miratrade.options_trades import realized_vol, simulate_option
 from miratrade.regimes import market_regimes
 from miratrade.signals.insider import insider_features
 from miratrade.signals.options_flow import flow_features, unusual_prints
+from miratrade.signals.smart_money import ownership_features, short_features
 from miratrade.signals.technical import SETUPS, detect_setups, indicators
 from miratrade.survivorship import delisted_tickers
 
 
 def build_panel(prices: dict[str, pd.DataFrame], insiders: pd.DataFrame, flow: pd.DataFrame,
-                cfg: Config = Config(), market: str = "SPY") -> dict[str, pd.DataFrame]:
+                cfg: Config = Config(), market: str = "SPY", ownership: pd.DataFrame | None = None,
+                short_volume: pd.DataFrame | None = None) -> dict[str, pd.DataFrame]:
+    """``ownership`` (13D/13G filings) and ``short_volume`` (FINRA) are optional; without them
+    their features are zero / NaN and the matching conditions never fire."""
     unusual = unusual_prints(flow, cfg.flow)
     mkt = None
     if market in prices:
@@ -36,6 +41,8 @@ def build_panel(prices: dict[str, pd.DataFrame], insiders: pd.DataFrame, flow: p
         ind = ind.join(detect_setups(ind).add_prefix("setup_").astype(float))
         ind = ind.join(insider_features(insiders, ind.index, t, cfg.insider))
         ind = ind.join(flow_features(unusual, ind.index, t, cfg.flow))
+        ind = ind.join(ownership_features(ownership, ind.index, t, cfg.smart))
+        ind = ind.join(short_features(short_volume, ind.index, t, cfg.smart))
         if mkt is not None:
             ind = ind.join(mkt).fillna({"mkt_up": 0.0, "mkt_trend": "unknown", "mkt_vol": "unknown"})
         panel[t] = ind
@@ -97,6 +104,11 @@ def conditions(row: pd.Series) -> dict[str, bool]:
     c["flow:bullish"] = row["flow_bull_prem"] > max(row["flow_bear_prem"], 0) and row["flow_n_unusual"] > 0
     c["flow:bull_1m+"] = row["flow_bull_prem"] >= 1_000_000
     c["flow:bearish"] = row["flow_bear_prem"] > row["flow_bull_prem"]
+    c["event:13dg"] = bool(row.get("own_fresh", 0))
+    c["own:13d"] = row.get("own_13d", 0) > 0
+    c["own:13g_active"] = row.get("own_13g", 0) > 0
+    c["short:low"] = bool(row.get("short_low", 0))
+    c["short:high"] = bool(row.get("short_high", 0))
     c["trend:up"] = row["close"] > row["sma50"] and row["sma20"] > row["sma50"]
     c["trend:above_200"] = bool(row["close"] > row["sma200"]) if np.isfinite(row["sma200"]) else False
     c["mom:ret20>0"] = row["ret_20d"] > 0
@@ -111,7 +123,8 @@ def conditions(row: pd.Series) -> dict[str, bool]:
 def entry_trigger(ind: pd.DataFrame) -> pd.Series:
     """Bars on which a candidate trade is taken: a setup completed or a fresh event arrived."""
     setup_cols = [f"setup_{s}" for s in SETUPS]
-    return (ind[setup_cols].sum(axis=1) > 0) | (ind["ins_fresh"] > 0) | (ind["flow_fresh"] > 0)
+    fresh = ind["ins_fresh"] + ind["flow_fresh"] + ind.get("own_fresh", 0)
+    return (ind[setup_cols].sum(axis=1) > 0) | (fresh > 0)
 
 
 def run_trades(panel: dict[str, pd.DataFrame], start: pd.Timestamp | None = None,

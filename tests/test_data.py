@@ -32,6 +32,7 @@ def test_parse_form4_xml():
     df = parse_form4_xml(FORM4, accession="a1", filing_date="20260805")
     r = df.iloc[0]
     assert r.ticker == "ACME" and r.code == "P" and r.is_officer and not r.is_director
+    assert r.issuer_cik == "1"
     assert r.value == 50_500 and r.delta_own_pct == 0.25
     assert r.filing_date == pd.Timestamp("2026-08-05") and r.trade_date == pd.Timestamp("2026-08-03")
 
@@ -47,8 +48,8 @@ def test_parse_daily_index_dedupes_and_filters():
 
 def test_parse_bulk_zip():
     tables = {
-        "SUBMISSION.tsv": "ACCESSION_NUMBER\tFILING_DATE\tISSUERNAME\tISSUERTRADINGSYMBOL\n"
-                          "a1\t05-AUG-2026\tAcme\tACME\n",
+        "SUBMISSION.tsv": "ACCESSION_NUMBER\tFILING_DATE\tISSUERNAME\tISSUERTRADINGSYMBOL\tISSUERCIK\n"
+                          "a1\t05-AUG-2026\tAcme\tACME\t0000000042\n",
         "REPORTINGOWNER.tsv": "ACCESSION_NUMBER\tRPTOWNERCIK\tRPTOWNERNAME\tRPTOWNER_RELATIONSHIP\tRPTOWNER_TITLE\n"
                               "a1\t99\tDoe\tDirector,Officer\tCFO\n",
         "NONDERIV_TRANS.tsv": "ACCESSION_NUMBER\tTRANS_DATE\tTRANS_CODE\tTRANS_SHARES\tTRANS_PRICEPERSHARE\tSHRS_OWND_FOLWNG_TRANS\n"
@@ -60,6 +61,7 @@ def test_parse_bulk_zip():
             zf.writestr(name, body)
     r = parse_bulk_zip(buf.getvalue()).iloc[0]
     assert r.ticker == "ACME" and r.is_officer and r.is_director and r.value == 1000
+    assert r.issuer_cik == "42"
     assert r.delta_own_pct == 1.0  # brand-new position
 
 

@@ -28,6 +28,16 @@ class FlowParams:
 
 
 @dataclass
+class SmartMoneyParams:
+    lookback_days: int = 30             # a 13D/13G filing stays "active" this long after it is filed
+    # Index giants file 13Gs for every stock they hold past 5%: no information in those.
+    passive_filers: tuple[str, ...] = ("VANGUARD", "BLACKROCK", "STATE STREET")
+    short_window: int = 20              # short-volume ratio z-score against this many sessions
+    short_min_periods: int = 10
+    short_z: float = 1.0                # |z| at or above this counts as unusually low / high shorting
+
+
+@dataclass
 class TradeParams:
     stop_atr: float = 1.5               # initial stop distance in ATRs
     target_atr: float = 3.0             # profit target in ATRs (2R)
@@ -80,6 +90,7 @@ class SurvivorshipParams:
 class Config:
     insider: InsiderParams = field(default_factory=InsiderParams)
     flow: FlowParams = field(default_factory=FlowParams)
+    smart: SmartMoneyParams = field(default_factory=SmartMoneyParams)
     trade: TradeParams = field(default_factory=TradeParams)
     options: OptionParams = field(default_factory=OptionParams)
     edge: EdgeParams = field(default_factory=EdgeParams)

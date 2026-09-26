@@ -47,3 +47,35 @@ def make_market(n_tickers: int = 40, n_days: int = 320, seed: int = 7,
                                   "volume": rng.integers(1_000_000, 3_000_000, n_days)},
                                  index=pd.DatetimeIndex(dates, name="date"))
     return prices, pd.DataFrame(ins_rows), pd.DataFrame(flow_rows)
+
+
+def make_13d_market(n_tickers: int = 40, n_days: int = 320, seed: int = 11,
+                    drift_after_signal: float = 0.004, event_days: int = 200,
+                    events_per_ticker: int = 4) -> tuple[dict, pd.DataFrame]:
+    """Random-walk market where new 13D filings are followed by positive drift. Also plants
+    passive index-fund 13Gs with *no* drift, which the features must ignore."""
+    from miratrade.data.ownership import OWNERSHIP_COLUMNS
+
+    rng = np.random.default_rng(seed)
+    dates = pd.bdate_range("2025-07-01", periods=n_days)
+    prices, rows = {}, []
+    for t in [f"S{i:02d}" for i in range(n_tickers)] + ["SPY"]:
+        rets = rng.normal(0.0, 0.018, n_days)
+        if t != "SPY":
+            for j, ev in enumerate(rng.choice(np.arange(n_days - event_days, n_days - 20),
+                                              size=events_per_ticker, replace=False)):
+                activist = j % 2 == 0
+                rows.append({"accession": f"{t}-{ev}", "filing_date": dates[ev], "ticker": t,
+                             "subject_cik": t, "filer": "Activist LP" if activist else "VANGUARD GROUP",
+                             "kind": "13D" if activist else "13G", "amendment": False,
+                             "passive": not activist})
+                if activist:
+                    rets[ev + 1: ev + 16] += drift_after_signal
+        close = 100 * np.exp(np.cumsum(rets))
+        open_ = close * np.exp(rng.normal(0, 0.004, n_days))
+        high = np.maximum(open_, close) * (1 + np.abs(rng.normal(0, 0.008, n_days)))
+        low = np.minimum(open_, close) * (1 - np.abs(rng.normal(0, 0.008, n_days)))
+        prices[t] = pd.DataFrame({"open": open_, "high": high, "low": low, "close": close,
+                                  "volume": rng.integers(1_000_000, 3_000_000, n_days)},
+                                 index=pd.DatetimeIndex(dates, name="date"))
+    return prices, pd.DataFrame(rows, columns=OWNERSHIP_COLUMNS)

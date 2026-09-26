@@ -17,10 +17,12 @@ from miratrade.survivorship import coverage
 
 
 def pipeline(prices: dict, insiders: pd.DataFrame, flow: pd.DataFrame, start: pd.Timestamp,
-             out_dir: Path, cfg: Config = Config(), universe: set[str] | None = None) -> dict:
+             out_dir: Path, cfg: Config = Config(), universe: set[str] | None = None,
+             ownership: pd.DataFrame | None = None, short_volume: pd.DataFrame | None = None) -> dict:
     """``universe``: every ticker that should have been tested (default: those with prices), so
-    tickers that got no price data can be reported."""
-    panel = build_panel(prices, insiders, flow, cfg)
+    tickers that got no price data can be reported. ``ownership`` (13D/13G) and
+    ``short_volume`` (FINRA) add the smart-money conditions when given."""
+    panel = build_panel(prices, insiders, flow, cfg, ownership=ownership, short_volume=short_volume)
     trades = run_trades(panel, start=start, cfg=cfg)
     wf = None
     if trades.empty:
@@ -54,6 +56,7 @@ def pipeline(prices: dict, insiders: pd.DataFrame, flow: pd.DataFrame, start: pd
     end = max(df.index[-1] for df in panel.values())
     meta = {"start": start.date(), "end": end.date(), "n_tickers": len(panel),
             "n_insider": len(insiders), "n_unusual": len(unusual_prints(flow, cfg.flow)),
+            "n_ownership": 0 if ownership is None else len(ownership),
             "stop_atr": cfg.trade.stop_atr, "target_atr": cfg.trade.target_atr,
             "max_hold": cfg.trade.max_hold_days, "min_lift_r": cfg.edge.min_lift_r,
             "min_trades": cfg.edge.min_trades}
@@ -88,13 +91,33 @@ def cmd_analyze(a) -> None:
     universe |= set(unusual_prints(flow, cfg.flow)["ticker"].unique())
     universe |= set(a.tickers or []) | {"SPY"}
 
+    ownership = short_volume = None
+    if not a.no_smart_money:
+        from miratrade.data.finra import fetch_short_volume
+        from miratrade.data.ownership import cik_ticker_map, fetch_ownership
+        from miratrade.data.sec import SecClient
+
+        client = SecClient()
+        print(f"Fetching 13D/13G filings {start} → {end} …")
+        ownership, stats = fetch_ownership(start - timedelta(days=cfg.smart.lookback_days), end,
+                                           cik_ticker_map(client, insiders), client,
+                                           passive_filers=cfg.smart.passive_filers)
+        print(f"  {stats['resolved']} of {stats['filings']} filings matched to a ticker "
+              f"({stats['unresolved']} private or unknown issuers, {stats['ambiguous']} needed a header)")
+        new_13d = ownership[(ownership["kind"] == "13D") & ~ownership["amendment"]]
+        universe |= set(new_13d["ticker"].value_counts().head(a.max_13d_tickers).index)
+        print(f"Fetching FINRA short volume for {len(universe)} tickers …")
+        # 60 extra calendar days so the short-ratio z-score has history at the window start.
+        short_volume = fetch_short_volume(start - timedelta(days=60), end, tickers=universe)
+
     if a.prices_dir:
         prices = load_prices_csv(Path(a.prices_dir))
     else:
         print(f"Loading prices for {len(universe)} tickers …")
         # 300 extra calendar days so 200-day averages exist at the window start.
         prices = load_prices(sorted(universe), start - timedelta(days=300), end + timedelta(days=1))
-    res = pipeline(prices, insiders, flow, pd.Timestamp(start), Path(a.out), cfg, universe=universe)
+    res = pipeline(prices, insiders, flow, pd.Timestamp(start), Path(a.out), cfg, universe=universe,
+                   ownership=ownership, short_volume=short_volume)
     print(res.get("report", "No trades generated."))
     print(f"\nWrote {a.out}/edge_report.md, trades.csv, rules.csv, candidates.csv, walk_forward.csv")
 
@@ -127,6 +150,10 @@ def main(argv: list[str] | None = None) -> None:
     an.add_argument("--insiders-csv", help="pre-downloaded insider CSV (skip SEC fetch)")
     an.add_argument("--prices-dir", help="directory of <TICKER>.csv OHLCV files (skip download)")
     an.add_argument("--max-insider-tickers", type=int, default=150)
+    an.add_argument("--max-13d-tickers", type=int, default=100,
+                    help="add up to this many companies with new 13D filings to the universe")
+    an.add_argument("--no-smart-money", action="store_true",
+                    help="skip 13D/13G and FINRA short-volume data")
     an.add_argument("--out", default="reports")
     an.set_defaults(func=cmd_analyze)
 
