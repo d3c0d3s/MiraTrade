@@ -24,5 +24,8 @@ miratrade-app = "miratrade.app.main:run"
 [tool.setuptools.packages.find]
 include = ["miratrade*"]
 
+[tool.setuptools.package-data]
+"miratrade.app" = ["assets/*.svg", "assets/*.ico", "assets/fonts/*.ttf", "assets/fonts/OFL.txt"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

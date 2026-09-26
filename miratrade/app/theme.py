@@ -14,6 +14,14 @@ UP = "#3FD19B"
 DOWN = "#FF8A7A"
 INSIDER = "#F4B740"
 OPTIONS = "#B79CFF"
+OWNERSHIP = "#F472B6"                   # 13D / 13G
+TEXT_BODY = "#C4CCD8"
+SELECTED = "#141C2E"
+GRID = "#1A2029"
+# Each event type: colour, shape (never colour alone) and the pill's border.
+EVENT_STYLE = {"event:insider_buy": (INSIDER, "◆", "#6B5320"),
+               "event:flow": (OPTIONS, "●", "#4F4470"),
+               "event:13dg": (OWNERSHIP, "■", "#6B2E52")}
 DANGER_BG = "#3A1614"
 DANGER_BORDER = "#8C3A33"
 
@@ -25,7 +33,13 @@ QSS = f"""
 QMainWindow, QWidget#page, QStackedWidget {{ background: {BG}; }}
 QWidget#nav {{ background: {PANEL}; border-right: 1px solid {BORDER}; }}
 QWidget#header {{ background: {PANEL}; border-bottom: 1px solid {BORDER}; }}
-QLabel#brand {{ font-size: 18px; font-weight: 700; padding: 4px 14px 16px 14px; }}
+QLabel#brand {{ font-size: 20px; letter-spacing: -0.5px; }}
+QLabel#ticker {{ font-family: {MONO}; font-size: 22px; font-weight: 600; }}
+QLabel#price {{ font-family: {MONO}; font-size: 18px; }}
+QLabel#label {{ color: {TEXT_2}; font-size: 12px; font-weight: 600; letter-spacing: 0.5px; }}
+QLabel#body {{ color: {TEXT_BODY}; font-size: 14px; }}
+QFrame#evidence {{ background: {PANEL_2}; border: 1px solid {BORDER}; border-radius: 10px; }}
+QWidget#side {{ background: {PANEL}; border-left: 1px solid {BORDER}; }}
 QLabel#h1 {{ font-size: 20px; font-weight: 600; }}
 QLabel#h2 {{ font-size: 16px; font-weight: 600; }}
 QLabel#muted, QLabel.muted {{ color: {TEXT_2}; font-size: 13px; }}
@@ -39,6 +53,7 @@ QPushButton:hover {{ border-color: {ACCENT}; }}
 QPushButton:focus {{ border: 2px solid {ACCENT}; }}
 QPushButton:disabled {{ color: #6F7A89; border-color: {BORDER}; }}
 QPushButton#primary {{ background: {PRIMARY}; border-color: {PRIMARY}; color: white; }}
+QPushButton#primary:disabled {{ background: #1C2A45; border-color: #1C2A45; color: #7F8BA0; }}
 QPushButton#danger {{ background: {DANGER_BG}; border-color: {DANGER_BORDER}; color: #FFB4AA; font-weight: 600; }}
 QPushButton#navButton {{ text-align: left; min-height: 44px; border: none; background: transparent;
                          color: {TEXT_2}; font-size: 15px; font-weight: 500; padding-left: 14px; }}

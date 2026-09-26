@@ -6,7 +6,7 @@ import traceback
 import numpy as np
 import pandas as pd
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, QRunnable, Qt, Signal
-from PySide6.QtWidgets import QFrame, QHeaderView, QLabel, QTableView, QVBoxLayout
+from PySide6.QtWidgets import QFrame, QHeaderView, QLabel, QTableView, QVBoxLayout, QWidget
 
 from miratrade.app import theme
 
@@ -81,6 +81,46 @@ def card(*widgets, title: str | None = None) -> QFrame:
     for w in widgets:
         lay.addWidget(w)
     return frame
+
+
+MONTHS = ("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic")
+
+
+def es_date(d, year: bool = True) -> str:
+    """24 ago 2026 (Spanish month abbreviations regardless of the system locale)."""
+    d = pd.Timestamp(d)
+    return f"{d.day} {MONTHS[d.month - 1]}" + (f" {d.year}" if year else "")
+
+
+def es_num(v: float, decimals: int = 2, sign: bool = False) -> str:
+    """1.234,56 with a real minus sign; ``sign`` also writes the plus."""
+    s = f"{abs(v):,.{decimals}f}".replace(",", " ").replace(".", ",").replace(" ", ".")
+    return ("−" if v < 0 else "+" if sign and v > 0 else "") + s
+
+
+class ShapeIcon(QWidget):
+    """The event shape (◆ ● ■) drawn, so it never depends on a font having the glyph."""
+
+    def __init__(self, shape: str, color: str, size: int = 10):
+        super().__init__()
+        self.shape, self.color = shape, color
+        self.setFixedSize(size, size)
+
+    def paintEvent(self, _):
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QColor, QPainter, QPolygonF
+
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(self.color))
+        w, h = self.width(), self.height()
+        if self.shape == "●":
+            p.drawEllipse(1, 1, w - 2, h - 2)
+        elif self.shape == "■":
+            p.drawRect(1, 1, w - 2, h - 2)
+        else:
+            p.drawPolygon(QPolygonF([QPointF(w / 2, 0), QPointF(w, h / 2), QPointF(w / 2, h), QPointF(0, h / 2)]))
 
 
 def muted(text: str) -> QLabel:

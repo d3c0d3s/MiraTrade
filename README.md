@@ -20,6 +20,22 @@ Output goes to `reports/`: `edge_report.md`, `trades.csv`, `rules.csv` (every ru
 bar matches a validated rule, with entry, stop, target and a suggested call) and `walk_forward.csv`
 (one row per walk-forward fold).
 
+## New events and the desktop app
+
+```bash
+miratrade scan --days 7                      # new insider buys and 13D/13G of the last 7 days
+miratrade scan --days 7 --variant stock12m_30
+pip install -e ".[yf,app]" && miratrade-app  # Windows desktop app
+```
+
+`scan` finds the bars where an event fired in the last days (same panel and conditions as the
+analysis) and, for each one, looks up what similar past events did in the newest report's
+`events.csv` under one outcome profile: how many reached the target first, the stop first or
+neither, plus any validated, walk-forward-confirmed profile rule the event meets. It is history,
+not a forecast. The result is saved to the app folder and shown on the app's **Señales** screen
+with a candlestick chart of the event. The app bundles IBM Plex (SIL Open Font License) and the
+brand icon from `brand/`.
+
 ## Pipeline
 
 | Stage | Module | What it does |

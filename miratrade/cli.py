@@ -145,6 +145,25 @@ def cmd_snapshot(a) -> None:
     print(f"Saved {len(df)} option rows for {df['ticker'].nunique() if len(df) else 0} tickers.")
 
 
+def cmd_scan(a) -> None:
+    from miratrade.config import APP_DIR, CACHE_DIR
+    from miratrade.scan import (EVENT_LABELS, evidence, latest_history_report, load_history, run_scan,
+                                save_scan, variant_label)
+
+    report = Path(a.report) if a.report else latest_history_report(Path("reports"))
+    history, rules = load_history(report) if report else (pd.DataFrame(), pd.DataFrame())
+    res = run_scan(days=a.days, flow_dir=Path(a.flow) if a.flow else CACHE_DIR / "flow",
+                   smart_money=not a.no_smart_money)
+    save_scan(res, Path(a.save) if a.save else APP_DIR / "scan")
+    print(f"\nEvidencia: {report or 'sin reporte con events.csv'} · perfil {variant_label(a.variant)}\n")
+    for ev in res["events"].to_dict("records"):
+        kinds = ", ".join(v for k, v in EVENT_LABELS.items() if ev.get(k))
+        e = evidence(ev, history, a.variant, rules)
+        print(f"{ev['ticker']:6s} {ev['signal_date']:%Y-%m-%d}  {kinds}: {ev['what']}")
+        print(f"       {e.sentence}" + (f" Reglas validadas: {', '.join(e.rules)}." if e.rules else ""))
+    print("\nAnálisis, no asesoramiento.")
+
+
 def cmd_demo(a) -> None:
     from miratrade.synthetic import make_market
 
@@ -176,6 +195,15 @@ def main(argv: list[str] | None = None) -> None:
     sn = sub.add_parser("snapshot", help="save today's CBOE option chains to .cache/flow")
     sn.add_argument("tickers", nargs="+")
     sn.set_defaults(func=cmd_snapshot)
+
+    sc = sub.add_parser("scan", help="new events of the last N days and what similar past events did")
+    sc.add_argument("--days", type=int, default=7)
+    sc.add_argument("--variant", default="call45_40", help="outcome profile, e.g. call45_40 or stock12m_30")
+    sc.add_argument("--report", help="report folder with events.csv (default: newest under reports/)")
+    sc.add_argument("--flow", help="options-flow CSV file or directory (default .cache/flow)")
+    sc.add_argument("--no-smart-money", action="store_true", help="skip 13D/13G filings")
+    sc.add_argument("--save", help="folder for the result (default: the app's scan folder)")
+    sc.set_defaults(func=cmd_scan)
 
     de = sub.add_parser("demo", help="run the full pipeline on synthetic data with a planted edge")
     de.add_argument("--out", default="reports/demo")

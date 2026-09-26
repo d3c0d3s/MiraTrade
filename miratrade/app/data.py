@@ -14,6 +14,7 @@ from miratrade.config import APP_DIR, Config, load_user_config
 
 REPORTS_DIR = Path(os.environ.get("MIRATRADE_REPORTS", "reports"))
 SETTINGS_PATH = APP_DIR / "settings.json"
+SCAN_DIR = APP_DIR / "scan"
 _WINDOW = re.compile(r"Window: \*\*(\S+) → (\S+)\*\*")
 
 
@@ -117,3 +118,9 @@ def analyze_command(days: int, out: Path, extra: list[str] | None = None) -> lis
     """Arguments for running an analysis as a separate process (the app never blocks on it)."""
     return ["-X", "utf8", "-W", "ignore", "-m", "miratrade.cli", "analyze", "--days", str(days),
             "--out", str(out), *(extra or [])]
+
+
+def scan_command(days: int, variant: str, save: Path, report: Path | None = None) -> list[str]:
+    """Arguments for ``miratrade scan`` as a separate process; it saves its result in ``save``."""
+    return ["-X", "utf8", "-W", "ignore", "-m", "miratrade.cli", "scan", "--days", str(days),
+            "--variant", variant, "--save", str(save), *(["--report", str(report)] if report else [])]

@@ -1,0 +1,346 @@
+"""Señales: the new events of the last days, each with its chart and the evidence of similar
+past events (from the newest report with ``events.csv``). The scan runs as a separate process."""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import pandas as pd
+from PySide6.QtCore import QProcess, Qt
+from PySide6.QtGui import QColor, QPainter
+from PySide6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
+                               QPlainTextEdit, QPushButton, QSizePolicy, QSpinBox, QVBoxLayout, QWidget)
+
+from miratrade.app import data, theme
+from miratrade.app.chart import CandleChart
+from miratrade.app.widgets import ShapeIcon, es_date, es_num, muted
+from miratrade.config import Config
+from miratrade.outcomes import EVENT_TYPES, variants
+from miratrade.scan import (CONDITION_LABELS, DEFAULT_VARIANT, EVENT_LABELS, evidence, latest_history_report,
+                            load_history, load_scan, variant_label)
+
+CONTEXT_LABELS = {"trend:up": "Tendencia al alza (sobre sus medias de 20 y 50)",
+                  "trend:above_200": "Por encima de su media de 200 sesiones",
+                  "mom:ret20>0": "Sube en las últimas 20 sesiones", "rsi:<40": "RSI bajo (menos de 40)",
+                  "rsi:>60": "RSI alto (más de 60)", "vol:rel>1.5": "Volumen 1,5 veces el normal",
+                  "mkt:spy_above_50d": "Mercado (SPY) sobre su media de 50", "short:low": "Poca venta en corto",
+                  "short:high": "Mucha venta en corto"}
+DISCLAIMER = "Análisis, no asesoramiento. Con opciones puedes perder la prima entera."
+
+
+def _label(text: str, name: str, wrap: bool = False) -> QLabel:
+    lab = QLabel(text)
+    lab.setObjectName(name)
+    lab.setWordWrap(wrap)
+    return lab
+
+
+def _pill(kind: str) -> QFrame:
+    color, shape, border = theme.EVENT_STYLE[kind]
+    pill = QFrame()
+    pill.setObjectName("eventPill")
+    pill.setFixedHeight(22)
+    pill.setStyleSheet(f"QFrame#eventPill {{ border: 1px solid {border}; border-radius: 11px; }}")
+    lay = QHBoxLayout(pill)
+    lay.setContentsMargins(8, 0, 9, 0)
+    lay.setSpacing(5)
+    lay.addWidget(ShapeIcon(shape, color, 9))
+    lab = QLabel(EVENT_LABELS[kind])
+    lab.setStyleSheet(f"color: {color}; font-size: 12px; border: none;")
+    lay.addWidget(lab)
+    pill.setAccessibleName(EVENT_LABELS[kind])
+    return pill
+
+
+class EventCard(QWidget):
+    def __init__(self, ev: dict):
+        super().__init__()
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(4, 4, 4, 4)
+        lay.setSpacing(6)
+        top = QHBoxLayout()
+        top.setSpacing(6)
+        top.addWidget(_label(ev["ticker"], "ticker"))
+        top.addStretch(1)
+        for k in EVENT_TYPES:
+            if ev.get(k):
+                top.addWidget(_pill(k))
+        lay.addLayout(top)
+        lay.addWidget(_label(str(ev.get("what", "")), "body", wrap=True))
+        lay.addWidget(muted(es_date(ev["signal_date"])))
+
+
+class OutcomeBar(QWidget):
+    """Target / stop / neither as one stacked bar; the labels say the numbers (never colour alone)."""
+
+    def __init__(self):
+        super().__init__()
+        self.parts = (0.0, 0.0, 0.0)
+        self.setFixedHeight(10)
+
+    def set(self, target: float, stop: float, neither: float) -> None:
+        self.parts = tuple(0.0 if pd.isna(v) else float(v) for v in (target, stop, neither))
+        self.update()
+
+    def paintEvent(self, _):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(theme.GRID))
+        p.drawRoundedRect(0, 0, w, h, 5, 5)
+        x = 0.0
+        for v, c in zip(self.parts, (theme.UP, theme.DOWN, theme.TEXT_2)):
+            p.setBrush(QColor(c))
+            p.drawRect(int(x), 0, int(round(w * v)), h)
+            x += w * v
+
+
+class SignalsPage(QWidget):
+    def __init__(self, reports_dir: Path | None = None, scan_dir: Path | None = None, cfg: Config = Config()):
+        super().__init__()
+        self.setObjectName("page")
+        self.cfg = cfg
+        self.reports_dir = Path(reports_dir or data.REPORTS_DIR)
+        self.scan_dir = Path(scan_dir or data.SCAN_DIR)
+        self.proc: QProcess | None = None
+        self.scan: dict | None = None
+        self.history = self.rules = pd.DataFrame()
+        self.report: Path | None = None
+
+        # toolbar
+        self.title = _label("Señales nuevas", "h1")
+        self.meta = _label("", "muted")
+        self.days = QSpinBox()
+        self.days.setRange(1, 60)
+        self.days.setValue(7)
+        self.days.setSuffix(" días")
+        self.days.setAccessibleName("Buscar eventos de los últimos días")
+        self.variant = QComboBox()
+        for v in variants(cfg):
+            self.variant.addItem(variant_label(v, cfg), v)
+        self.variant.setCurrentIndex(max(0, self.variant.findData(DEFAULT_VARIANT)))
+        self.variant.setAccessibleName("Perfil de resultado para la evidencia")
+        self.variant.currentIndexChanged.connect(lambda _: self._show_selected(self.list.currentItem()))
+        self.scan_btn = QPushButton("Buscar eventos")
+        self.scan_btn.setObjectName("primary")
+        self.scan_btn.clicked.connect(self.start_scan)
+        self.cancel_btn = QPushButton("Cancelar")
+        self.cancel_btn.clicked.connect(self.cancel_scan)
+        self.cancel_btn.hide()
+        bar = QHBoxLayout()
+        bar.setSpacing(12)
+        titles = QVBoxLayout()
+        titles.setSpacing(2)
+        titles.addWidget(self.title)
+        titles.addWidget(self.meta)
+        bar.addLayout(titles)
+        bar.addStretch(1)
+        for w in (muted("Perfil"), self.variant, self.days, self.scan_btn, self.cancel_btn):
+            bar.addWidget(w)
+        self.log = QPlainTextEdit()
+        self.log.setReadOnly(True)
+        self.log.setMaximumHeight(120)
+        self.log.hide()
+
+        # left: events
+        self.count = _label("", "label")
+        self.list = QListWidget()
+        self.list.setAccessibleName("Eventos nuevos")
+        self.list.currentItemChanged.connect(self._show_selected)
+        self.empty = muted("Aún no hay búsqueda. Pulsa «Buscar eventos»: la primera vez descarga los Form 4 "
+                           "de la SEC de esos días y puede tardar varios minutos. Todo queda en caché.")
+        left = QVBoxLayout()
+        left.setSpacing(10)
+        left.addWidget(self.count)
+        left.addWidget(self.empty)
+        left.addWidget(self.list, 1)
+        left_box = QWidget()
+        left_box.setLayout(left)
+        left_box.setFixedWidth(340)
+
+        # centre: chart
+        self.ticker = _label("", "ticker")
+        self.price = _label("", "price")
+        self.change = _label("", "price")
+        head = QHBoxLayout()
+        head.setSpacing(14)
+        for w in (self.ticker, self.price, self.change):
+            head.addWidget(w, 0, Qt.AlignBaseline)
+        head.addStretch(1)
+        self.chart = CandleChart()
+        centre = QVBoxLayout()
+        centre.setSpacing(12)
+        centre.addLayout(head)
+        centre.addWidget(self.chart, 1)
+
+        # right: evidence and the proposed profile
+        side = QWidget()
+        side.setObjectName("side")
+        side.setFixedWidth(330)
+        s = QVBoxLayout(side)
+        s.setContentsMargins(20, 20, 20, 20)
+        s.setSpacing(12)
+        self.profile = _label("", "h2", wrap=True)
+        self.evidence_text = _label("", "body", wrap=True)
+        self.outcome = OutcomeBar()
+        self.legend = muted("")
+        box = QFrame()
+        box.setObjectName("evidence")
+        b = QVBoxLayout(box)
+        b.setContentsMargins(14, 12, 14, 12)
+        b.setSpacing(8)
+        b.addWidget(_label("Evidencia", "h2"))
+        b.addWidget(self.evidence_text)
+        b.addWidget(self.outcome)
+        b.addWidget(self.legend)
+        self.similar = muted("")
+        self.rules_text = _label("", "body", wrap=True)
+        self.context = muted("")
+        self.preview_btn = QPushButton("Vista previa en Schwab")
+        self.preview_btn.setObjectName("primary")
+        self.practice_btn = QPushButton("Añadir a práctica")
+        for btn in (self.preview_btn, self.practice_btn):
+            btn.setEnabled(False)
+            btn.setToolTip("Llega en el siguiente paso: elegir el contrato y abrir la vista previa o la práctica.")
+        for w in (_label("OPERACIÓN DE REFERENCIA", "label"), self.profile, box, self.similar,
+                  _label("REGLAS VALIDADAS", "label"), self.rules_text, _label("CONTEXTO (NO DISPARA SEÑALES)", "label"),
+                  self.context):
+            s.addWidget(w)
+        s.addStretch(1)
+        s.addWidget(self.preview_btn)
+        s.addWidget(self.practice_btn)
+        s.addWidget(muted(DISCLAIMER))
+
+        body = QHBoxLayout()
+        body.setSpacing(24)
+        body.addWidget(left_box)
+        body.addLayout(centre, 1)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(24, 20, 0, 0)
+        root.setSpacing(16)
+        top = QVBoxLayout()
+        top.setContentsMargins(0, 0, 24, 0)
+        top.addLayout(bar)
+        top.addWidget(self.log)
+        root.addLayout(top)
+        row = QHBoxLayout()
+        row.setSpacing(24)
+        inner = QVBoxLayout()
+        inner.setContentsMargins(0, 0, 0, 20)
+        inner.addLayout(body)
+        row.addLayout(inner, 1)
+        row.addWidget(side)
+        root.addLayout(row, 1)
+        side.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        self.refresh()
+
+    # ------------------------------------------------------------------ data
+
+    def refresh(self) -> None:
+        self.report = latest_history_report(self.reports_dir)
+        self.history, self.rules = load_history(self.report) if self.report else (pd.DataFrame(), pd.DataFrame())
+        self.scan = load_scan(self.scan_dir)
+        self.list.clear()
+        events = self.scan["events"] if self.scan else pd.DataFrame()
+        has = len(events) > 0
+        self.empty.setVisible(not has)
+        self.list.setVisible(has)
+        if self.scan:
+            span = f"{es_date(self.scan['since'], False)} → {es_date(self.scan['end'])}" if self.scan["since"] else ""
+            src = f"evidencia de {self.report.name}" if self.report else "sin reporte con eventos para la evidencia"
+            self.meta.setText(f"Búsqueda {span} · {src}")
+            if not has:
+                self.empty.setText("Ningún evento nuevo en esos días. Prueba con más días.")
+        else:
+            self.meta.setText("Sin búsqueda todavía")
+        self.count.setText(f"{len(events)} EVENTOS" if has else "")
+        for ev in events.to_dict("records"):
+            item = QListWidgetItem()
+            item.setData(Qt.UserRole, ev)
+            item.setData(Qt.AccessibleTextRole, f"{ev['ticker']}: {ev.get('what', '')}")
+            card = EventCard(ev)
+            item.setSizeHint(card.sizeHint())
+            self.list.addItem(item)
+            self.list.setItemWidget(item, card)
+        if has:
+            self.list.setCurrentRow(0)
+        else:
+            self._show_selected(None)
+
+    def _show_selected(self, item: QListWidgetItem | None, _prev=None) -> None:
+        v = self.variant.currentData()
+        self.profile.setText(variant_label(v, self.cfg))
+        if item is None:
+            for w in (self.ticker, self.price, self.change, self.evidence_text, self.legend, self.similar,
+                      self.rules_text, self.context):
+                w.setText("")
+            self.outcome.set(0, 0, 0)
+            self.chart.set_data(None)
+            return
+        ev = item.data(Qt.UserRole)
+        t = ev["ticker"]
+        prices = (self.scan or {}).get("prices", {}).get(t, pd.DataFrame())
+        self.ticker.setText(t)
+        if len(prices) >= 2:
+            last, prev = prices["close"].iat[-1], prices["close"].iat[-2]
+            self.price.setText(f"{es_num(last)} $")
+            ch = last / prev - 1
+            self.change.setText(f"{es_num(ch * 100, 1, sign=True)} %")
+            self.change.setStyleSheet(f"color: {theme.UP if ch >= 0 else theme.DOWN}")
+        kind = next((k for k in EVENT_TYPES if ev.get(k)), "event:insider_buy")
+        color, shape, _ = theme.EVENT_STYLE[kind]
+        self.chart.set_data(prices, ev["signal_date"], color, shape)
+
+        e = evidence(ev, self.history, v, self.rules)
+        self.evidence_text.setText(e.sentence if self.report else "No hay un reporte con eventos: ejecuta un "
+                                   "análisis en Reportes para tener evidencia.")
+        self.outcome.set(e.target, e.stop, e.neither)
+        self.legend.setText("verde: objetivo · coral: stop · gris: ninguno" if e.n else "")
+        narrowed = [CONDITION_LABELS.get(c, c) for c in e.similar_to]
+        self.similar.setText(("Parecidos = mismo tipo de evento" + (", " + ", ".join(narrowed) if narrowed else "")
+                              + ".") if e.n else "")
+        self.rules_text.setText(", ".join(e.rules) if e.rules else
+                                "Ninguna todavía: el análisis no ha confirmado ninguna regla para este perfil. "
+                                "Trata la evidencia como historial, no como predicción.")
+        ctx = [label for c, label in CONTEXT_LABELS.items() if ev.get(c) is True or ev.get(c) == 1]
+        self.context.setText("\n".join(f"• {c}" for c in ctx) or "Nada destacable.")
+
+    # ------------------------------------------------------------------ running a scan
+
+    def start_scan(self) -> None:
+        if self.proc is not None:
+            return
+        self.proc = QProcess(self)
+        self.proc.setProcessChannelMode(QProcess.MergedChannels)
+        self.proc.readyReadStandardOutput.connect(self._read_output)
+        self.proc.finished.connect(lambda code, _status: self._finished(code))
+        self.log.clear()
+        self.log.show()
+        self.scan_btn.setEnabled(False)
+        self.cancel_btn.show()
+        self.meta.setText(f"Buscando eventos de los últimos {self.days.value()} días…")
+        self.proc.start(sys.executable, data.scan_command(self.days.value(), self.variant.currentData(),
+                                                          self.scan_dir, self.report))
+
+    def _read_output(self) -> None:
+        text = bytes(self.proc.readAllStandardOutput()).decode("utf-8", "replace")
+        for line in text.splitlines():
+            if line.strip():
+                self.log.appendPlainText(line)
+
+    def _finished(self, code: int) -> None:
+        self.proc = None
+        self.scan_btn.setEnabled(True)
+        self.cancel_btn.hide()
+        if code == 0:
+            self.log.hide()
+            self.refresh()
+        else:
+            self.meta.setText(f"La búsqueda terminó con error (código {code}). Revisa el registro.")
+
+    def cancel_scan(self) -> None:
+        if self.proc is not None:
+            self.proc.kill()
+            self.meta.setText("Cancelada. Lo descargado queda en caché.")

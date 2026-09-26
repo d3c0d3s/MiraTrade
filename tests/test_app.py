@@ -75,7 +75,8 @@ def window(qtbot, tmp_path):
     QApplication.instance().setStyleSheet(QSS)
     _report(tmp_path / "reports", "r1")
     auth = SchwabAuth(CredentialStore(backend=MemoryKeyring()))
-    w = MainWindow(reports_dir=tmp_path / "reports", settings_path=tmp_path / "settings.json", auth=auth)
+    w = MainWindow(reports_dir=tmp_path / "reports", settings_path=tmp_path / "settings.json", auth=auth,
+                   scan_dir=tmp_path / "scan")
     qtbot.addWidget(w)
     return w
 
@@ -129,3 +130,65 @@ def test_stop_all_asks_first(window, monkeypatch):
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.Yes)
     window.stop_all()
     assert len(started) == 1 and not window.stop_btn.isEnabled()
+
+
+def test_signals_page_empty_state(window):
+    s = window.signals
+    assert window.pages.currentWidget() is s
+    assert s.list.count() == 0 and not s.empty.isHidden() and "Buscar eventos" in s.empty.text()
+    assert s.variant.currentData() == "call45_40" and not s.preview_btn.isEnabled()
+
+
+def test_signals_page_shows_events_with_evidence(qtbot, tmp_path):
+    from miratrade.app.pages.signals import SignalsPage
+    from miratrade.scan import save_scan
+
+    # a saved scan with one insider event and one 13D event
+    idx = pd.bdate_range("2026-05-01", periods=120)
+    bars = pd.DataFrame({"open": 10.0, "high": 10.5, "low": 9.5, "close": 10.2, "volume": 1e6}, index=idx)
+    events = pd.DataFrame([
+        {"ticker": "ACME", "signal_date": idx[-3], "close": 10.2, "event:insider_buy": True, "event:flow": False,
+         "event:13dg": False, "ins:exec_buy": True, "trend:up": True, "what": "2 directivos compraron 1,2 M$"},
+        {"ticker": "KLTR", "signal_date": idx[-5], "close": 10.2, "event:insider_buy": False, "event:flow": False,
+         "event:13dg": True, "own:13d": True, "trend:up": False, "what": "Fondo X presentó un 13D"}])
+    save_scan({"events": events, "prices": {"ACME": bars, "KLTR": bars}, "since": idx[-7].date(),
+               "end": idx[-1].date()}, tmp_path / "scan")
+    # a report whose events.csv holds 40 past insider events (half reached the target)
+    rep = tmp_path / "reports" / "5y"
+    rep.mkdir(parents=True)
+    pd.DataFrame({"event:insider_buy": [True] * 40, "event:flow": False, "event:13dg": False,
+                  "ins:exec_buy": [True] * 40, "res_call45_40": [1.0, -1.0] * 20,
+                  "ret_call45_40": [0.4, -0.25] * 20}).to_csv(rep / "events.csv", index=False)
+
+    page = SignalsPage(tmp_path / "reports", tmp_path / "scan")
+    qtbot.addWidget(page)
+    assert page.list.count() == 2 and page.empty.isHidden()
+    assert page.ticker.text() == "ACME" and page.price.text() == "10,20 $"
+    assert "40 eventos parecidos: 50 %" in page.evidence_text.text()
+    assert "Ninguna todavía" in page.rules_text.text()
+    assert "Tendencia al alza" in page.context.text()
+    assert page.chart.event_date == idx[-3] and len(page.chart.df) == 120
+    page.list.setCurrentRow(1)                                  # 13D: no such events in the report
+    assert page.ticker.text() == "KLTR" and "Sin eventos parecidos" in page.evidence_text.text()
+    assert page.chart.event_shape == "■"
+    page.variant.setCurrentIndex(page.variant.findData("stock12m_30"))
+    assert page.profile.text().startswith("Acción 12 meses")
+
+
+def test_brand_assets_load(qtbot):
+    from miratrade.app import brand
+
+    families = brand.load_fonts()
+    assert "IBM Plex Sans" in families and "IBM Plex Mono" in families
+    assert not brand.app_icon().isNull()
+    w = brand.nav_brand()
+    qtbot.addWidget(w)
+    s = brand.splash()
+    assert not s.pixmap().isNull()
+    s.close()
+
+
+def test_scan_command_arguments(tmp_path):
+    args = data.scan_command(7, "call45_40", tmp_path / "scan", tmp_path / "rep")
+    assert args[args.index("scan") + 1:] == ["--days", "7", "--variant", "call45_40", "--save",
+                                             str(tmp_path / "scan"), "--report", str(tmp_path / "rep")]

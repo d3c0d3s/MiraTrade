@@ -9,7 +9,9 @@ from PySide6.QtWidgets import (QButtonGroup, QHBoxLayout, QLabel, QMainWindow, Q
 
 from miratrade import __version__
 from miratrade.app import data
-from miratrade.app.pages.placeholders import practice_page, signals_page
+from miratrade.app.brand import app_icon, nav_brand
+from miratrade.app.pages.placeholders import practice_page
+from miratrade.app.pages.signals import SignalsPage
 from miratrade.app.pages.reports import ReportsPage
 from miratrade.app.pages.settings import SettingsPage
 from miratrade.app.widgets import Worker
@@ -18,19 +20,23 @@ PAGES = ("Señales", "Práctica", "Reportes", "Configuración")
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, reports_dir: Path | None = None, settings_path: Path | None = None, auth=None):
+    def __init__(self, reports_dir: Path | None = None, settings_path: Path | None = None, auth=None,
+                 scan_dir: Path | None = None):
         super().__init__()
         self.setWindowTitle(f"MiraTrade {__version__}")
         self.resize(1440, 900)
+        self.setWindowIcon(app_icon())
         self.settings_path = Path(settings_path or data.SETTINGS_PATH)
         self.pool = QThreadPool.globalInstance()
 
         self.pages = QStackedWidget()
+        self.signals = SignalsPage(reports_dir, scan_dir)
         self.reports = ReportsPage(reports_dir)
         self.settings = SettingsPage(self.settings_path, auth)
-        for w in (signals_page(), practice_page(), self.reports, self.settings):
+        for w in (self.signals, practice_page(), self.reports, self.settings):
             self.pages.addWidget(w)
         self.settings.settings_changed.connect(self.refresh_header)
+        self.reports.report_finished.connect(lambda _path: self.signals.refresh())   # fresher evidence
 
         # navigation
         nav = QWidget()
@@ -39,9 +45,7 @@ class MainWindow(QMainWindow):
         nav_lay = QVBoxLayout(nav)
         nav_lay.setContentsMargins(12, 20, 12, 20)
         nav_lay.setSpacing(4)
-        brand = QLabel("MiraTrade")
-        brand.setObjectName("brand")
-        nav_lay.addWidget(brand)
+        nav_lay.addWidget(nav_brand())
         self.nav = QButtonGroup(self)
         self.nav.setExclusive(True)
         for i, name in enumerate(PAGES):
