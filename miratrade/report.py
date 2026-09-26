@@ -139,13 +139,48 @@ def _options_section(opt: dict, baseline: dict) -> list[str]:
     return out
 
 
+def _profiles_section(profiles: dict) -> list[str]:
+    from miratrade.edge import prune_redundant
+
+    out = ["## High profit: which events reached the target first\n",
+           "Every event (new insider buy, bullish unusual flow, new 13D / active 13G; repeats on a ticker "
+           "within 20 sessions count once) is entered at the next open and measured under each profile: "
+           "the shares over 12 months, and ~0.65-delta calls at 30/45/60 days (modelled prices, held ≤ 20 "
+           "sessions). Target / stop pairs: +30/−20, +40/−25, +50/−30 %.\n"]
+    s = profiles["summary"]
+    tab = pd.DataFrame({"profile": s["variant"], "events": s["events"],
+                        "target first": s["target_first"].map(lambda x: _fmt(x, True)),
+                        "stop first": s["stop_first"].map(lambda x: _fmt(x, True)),
+                        "mean return": s["mean_return"].map(lambda x: _fmt(x, True)), "t": s["t"].map(_fmt)})
+    out.append(_table(tab))
+    out.append("\n### Rules that picked better-than-average events (both periods, split false-discovery rate)\n")
+    any_rule = False
+    for v, m in profiles["mined"].items():
+        r = m["rules"]
+        if r.empty or not r["validated"].any():
+            continue
+        any_rule = True
+        shown = prune_redundant(r[r["validated"]], top=5)
+        wf_note = f" · walk-forward pooled lift {_fmt(m['wf']['summary']['lift_r'], True)}" if m["wf"]["summary"]["trades"] else ""
+        out.append(f"\n**{v}** (average event {_fmt(m['baseline']['all']['avg_r'], True)}{wf_note})\n")
+        out.append(_table(pd.DataFrame({
+            "rule": shown["rule"], "discovery n": shown["train_n"],
+            "discovery return": shown["train_avg_r"].map(lambda x: _fmt(x, True)),
+            "validation n": shown["test_n"], "validation return": shown["test_avg_r"].map(lambda x: _fmt(x, True)),
+            "WF n": shown.get("wf_oos_n", 0), "WF confirmed": shown.get("wf_confirmed", False)})))
+    if not any_rule:
+        out.append("No rule picked out events that beat the average event in both periods, for any profile. "
+                   "Nothing here is an edge yet.\n")
+    return out
+
+
 def render(trades: pd.DataFrame, rules: pd.DataFrame, shown: pd.DataFrame, baseline: dict,
            scan: pd.DataFrame, meta: dict, opt: dict | None = None, wf: dict | None = None,
-           regimes: dict | None = None, survivorship: dict | None = None) -> str:
+           regimes: dict | None = None, survivorship: dict | None = None, profiles: dict | None = None) -> str:
     """``rules`` is every rule tested; ``shown`` the pruned validated rules to list; ``opt`` the
     same analysis with each trade expressed as a long call; ``wf`` the walk-forward result;
-    ``regimes`` the ``baseline``/``rules`` regime tables; ``survivorship`` the coverage summary
-    (all optional)."""
+    ``regimes`` the ``baseline``/``rules`` regime tables; ``survivorship`` the coverage summary;
+    ``profiles`` the high-profit profiles per event (all optional)."""
     out = [f"# MiraTrade edge report\n",
            f"Window: **{meta['start']} → {meta['end']}** · universe: {meta['n_tickers']} tickers · "
            f"insider rows: {meta['n_insider']} · unusual option prints: {meta['n_unusual']} · "
@@ -153,6 +188,10 @@ def render(trades: pd.DataFrame, rules: pd.DataFrame, shown: pd.DataFrame, basel
            "Trades enter at the next open after a signal, with a "
            f"{meta['stop_atr']}×ATR stop, {meta['target_atr']}×ATR target and "
            f"{meta['max_hold']}-bar time stop. Results are in R (multiples of initial risk).\n"]
+
+    if profiles is not None:
+        out.extend(_profiles_section(profiles))
+        out.append("\n---\n\n# Swing trades in R (ATR bracket, 15 sessions)\n")
 
     out.append("## Baseline (every candidate trade)\n")
     cols = ["set", "trades", "win rate", "avg R", "profit factor", "t"]

@@ -76,6 +76,20 @@ class EdgeParams:
 
 
 @dataclass
+class OutcomeParams:
+    """"High profit" profiles measured for every event (see ``outcomes.py``)."""
+    # (target, stop) pairs: the stop scales with the target (~1.6:1 reward to risk).
+    targets: tuple[tuple[float, float], ...] = ((0.30, 0.20), (0.40, 0.25), (0.50, 0.30))
+    long_months: int = 12               # long-term stock horizon
+    call_dtes: tuple[int, ...] = (30, 45, 60)
+    call_max_hold: int = 20             # sessions
+    call_exit_days_before_expiry: int = 7
+    event_cooldown: int = 20            # sessions: later events on the same ticker are the same move
+    min_lift: float = 0.03              # a rule must beat the average event by 3 points of return
+    enabled: bool = True
+
+
+@dataclass
 class RegimeParams:
     trend_sma: int = 200                # bull/bear: SPY and its 50-day vs the 200-day average
     trend_min_periods: int = 120
@@ -125,6 +139,7 @@ class Config:
     trade: TradeParams = field(default_factory=TradeParams)
     options: OptionParams = field(default_factory=OptionParams)
     edge: EdgeParams = field(default_factory=EdgeParams)
+    outcomes: OutcomeParams = field(default_factory=OutcomeParams)
     regime: RegimeParams = field(default_factory=RegimeParams)
     survivorship: SurvivorshipParams = field(default_factory=SurvivorshipParams)
     risk: RiskParams = field(default_factory=RiskParams)

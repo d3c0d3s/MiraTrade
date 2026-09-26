@@ -50,6 +50,18 @@ def pipeline(prices: dict, insiders: pd.DataFrame, flow: pd.DataFrame, start: pd
         wf["folds"].to_csv(out_dir / "walk_forward.csv", index=False)
     surv = coverage(universe if universe is not None else set(prices), prices, panel, insiders, flow,
                     trades, start, cfg)
+    profiles = None
+    if cfg.outcomes.enabled:
+        from miratrade.outcomes import build_outcomes, mine_profiles, summarize
+
+        events = build_outcomes(panel, cfg, start)
+        if len(events):
+            profiles = {"summary": summarize(events, cfg), "mined": mine_profiles(events, cfg), "events": events}
+            events.to_csv(out_dir / "events.csv", index=False)
+            profiles["summary"].to_csv(out_dir / "profiles.csv", index=False)
+            mined = [m["rules"].assign(variant=v) for v, m in profiles["mined"].items() if not m["rules"].empty]
+            (pd.concat(mined, ignore_index=True) if mined else pd.DataFrame()).to_csv(
+                out_dir / "profile_rules.csv", index=False)
     if baseline is None:
         (out_dir / "edge_report.md").write_text("# MiraTrade edge report\n\nNo trades generated.\n", encoding="utf-8")
         return {"trades": trades, "rules": rules, "candidates": candidates}
@@ -64,10 +76,10 @@ def pipeline(prices: dict, insiders: pd.DataFrame, flow: pd.DataFrame, start: pd
     shown = prune_redundant(validated, top=10) if len(validated) else validated
     regimes = {"baseline": regime_baseline(trades),
                "rules": regime_rules(trades, shown) if len(shown) else pd.DataFrame()}
-    report = render(trades, rules, shown, baseline, candidates, meta, opt, wf, regimes, surv)
+    report = render(trades, rules, shown, baseline, candidates, meta, opt, wf, regimes, surv, profiles)
     (out_dir / "edge_report.md").write_text(report, encoding="utf-8")
     return {"trades": trades, "rules": rules, "candidates": candidates, "report": report,
-            "options": opt, "walk_forward": wf, "regimes": regimes, "survivorship": surv}
+            "options": opt, "walk_forward": wf, "regimes": regimes, "survivorship": surv, "profiles": profiles}
 
 
 def cmd_analyze(a) -> None:
