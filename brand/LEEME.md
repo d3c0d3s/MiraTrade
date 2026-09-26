@@ -10,7 +10,7 @@ central en azul MiraTrade y una flecha verde en zigzag que pasa por detrás y ro
 |---|---|
 | `simbolo/` | Símbolo en SVG y PNG (16–1024 px): `fondo-oscuro` (principal), `fondo-claro`, `monocromo`, `alternativa-ambar` |
 | `icono/` | Icono de app sobre baldosa redondeada (SVG, PNG 16–1024) y `miratrade.ico` para Windows |
-| `firma/` | Símbolo + nombre «MiraTrade» en SVG, para fondo oscuro y claro |
+| `firma/` | Símbolo + nombre «MiraTrade» para fondo oscuro y claro: SVG y PNG transparente (`png/`, a 1×, 2× y 4×) |
 | `manual/` | PDF exportado del lienzo del manual de marca |
 | `fuente-diseno/` | Fuentes editables: tableros del lienzo (`manual-marca/`, `mockup-app/`) y los generadores en Python |
 
@@ -21,8 +21,9 @@ central en azul MiraTrade y una flecha verde en zigzag que pasa por detrás y ro
 - Colores: marco y pilar central `#6E9BFF`, pilares laterales `#F5F1E8`, flecha `#3FD19B`.
   Sobre claro: `#2F5BC8`, `#0E1726`, `#0E8A5F`.
 - Por debajo de 48 px usa los PNG de tamaño pequeño (trazos engrosados), no un reescalado del grande.
-- Tipografía: IBM Plex Sans (texto), IBM Plex Mono (cifras). Las firmas en SVG usan IBM Plex Sans:
-  instálala para que se vean correctamente.
+- Tipografía: IBM Plex Sans (texto), IBM Plex Mono (cifras). En las firmas el nombre va convertido a
+  trazos, así que se ven igual sin tener la fuente instalada. Las fuentes (licencia OFL) están en
+  `MirandasGroup/Brand/Tipografia/IBM Plex/`.
 
 ## Proporciones (iguales en todas las marcas del grupo)
 
@@ -38,4 +39,5 @@ No redibujes ni estires el marco o las barras: cambia solo colores y el elemento
 - Mockup de la app: https://claude.ai/artifact/RELWdggQD7uJvjR8SYgbp7
 - Identidad de Mirandas Group: https://claude.ai/artifact/3HGZuY56TpAdBvhNXhbvuu
 
-Regenerar los archivos: `python brand/fuente-diseno/export_brand.py` (necesita PySide6; rutas dentro del script).
+Regenerar los archivos: `python brand/fuente-diseno/export_brand.py` (necesita PySide6, Pillow para el
+`.ico` de varios tamaños y la carpeta de fuentes IBM Plex; rutas dentro del script).

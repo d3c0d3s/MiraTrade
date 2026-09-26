@@ -18,13 +18,47 @@ from pilares import bars, frame, svg, tile  # noqa: E402
 ROOT = Path("D:/MyDocs/Projects/MirandasGroup")
 GROUP_DIR = ROOT / "Brand" / "Mirandas Group"
 MT_DIR = ROOT / "MiraTrade" / "brand"
+FONT_DIR = ROOT / "Brand" / "Tipografia" / "IBM Plex"
 SIZES = (16, 32, 48, 64, 128, 256, 512, 1024)
 INSET = 0.8125                                    # must match pilares.TILE_INSET
 app = QApplication.instance() or QApplication(sys.argv)
 
+from PySide6.QtGui import QFont, QFontDatabase, QFontMetricsF, QPainterPath  # noqa: E402
+
+FONTS_OK = False
+for ttf in sorted(FONT_DIR.glob("*.ttf")):        # wordmarks are outlined from IBM Plex
+    FONTS_OK |= QFontDatabase.addApplicationFont(str(ttf)) != -1
+if not FONTS_OK:
+    sys.exit(f"IBM Plex not found in {FONT_DIR}: the wordmarks would be outlined in a fallback font")
+
 _src = (HERE / "gen_pilares_mt.py").read_text(encoding="utf-8").split('page = f"""')[0]
 mt = {"__file__": str(HERE / "gen_pilares_mt.py")}
 exec(_src, mt)
+
+
+def outline(text: str, family: str, weight: int, px: float, x: float, y: float, fill: str,
+            spacing: float = 0.0) -> tuple[str, float]:
+    """Text as an SVG path (logo files must not depend on installed fonts); returns (path, end x)."""
+    font = QFont(family)
+    font.setPixelSize(round(px))
+    font.setWeight(QFont.Weight(weight))
+    font.setLetterSpacing(QFont.AbsoluteSpacing, spacing)
+    qp = QPainterPath()
+    qp.addText(x, y, font, text)
+    d, i = [], 0
+    while i < qp.elementCount():
+        e = qp.elementAt(i)
+        if e.isMoveTo():
+            d.append(f"M{e.x:.2f} {e.y:.2f}")
+        elif e.isLineTo():
+            d.append(f"L{e.x:.2f} {e.y:.2f}")
+        else:                                       # curveTo + two control-data elements
+            c1, c2 = qp.elementAt(i + 1), qp.elementAt(i + 2)
+            d.append(f"C{e.x:.2f} {e.y:.2f} {c1.x:.2f} {c1.y:.2f} {c2.x:.2f} {c2.y:.2f}")
+            i += 2
+        i += 1
+    end = x + QFontMetricsF(font).horizontalAdvance(text)
+    return f'<path fill="{fill}" d="{"".join(d)}"/>', end
 
 
 def render_png(svg_text: str, size: int, path: Path):
@@ -35,6 +69,22 @@ def render_png(svg_text: str, size: int, path: Path):
     QSvgRenderer(QByteArray(svg_text.encode())).render(p, QRectF(0, 0, size, size))
     p.end()
     img.save(str(path))
+
+
+def save_lockup(svg_text: str, folder: Path, name: str, w: int, h: int):
+    """Wordmark lockup (text already outlined): SVG plus transparent PNG at 1x, 2x and 4x."""
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{name}.svg").write_text(svg_text, encoding="utf-8")
+    (folder / "png").mkdir(exist_ok=True)
+    for k in (1, 2, 4):
+        img = QImage(w * k, h * k, QImage.Format_ARGB32)
+        img.fill(QColor(0, 0, 0, 0))
+        p = QPainter(img)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
+        QSvgRenderer(QByteArray(svg_text.encode())).render(p, QRectF(0, 0, w * k, h * k))
+        p.end()
+        img.save(str(folder / "png" / f"{name}@{k}x.png"))
 
 
 def save_set(make, folder: Path, name: str):
@@ -77,10 +127,11 @@ def group_app_icon(size):
 
 
 def group_lockup(fg="#F5F1E8", gold="#C9A24A"):
+    name, _ = outline("MIRANDAS", "IBM Plex Serif", 600, 46, 116, 66, fg, spacing=5)
+    group, _ = outline("GROUP", "IBM Plex Sans", 400, 16, 119, 96, gold, spacing=10)
     return ('<svg xmlns="http://www.w3.org/2000/svg" width="560" height="120" viewBox="0 0 560 120">'
             f'<g transform="translate(0 12) scale(1.5)" fill="none">{group_body(96, gold, fg, gold)}</g>'
-            f'<text x="116" y="66" font-family="IBM Plex Serif, Georgia, serif" font-size="46" font-weight="600" letter-spacing="5" fill="{fg}">MIRANDAS</text>'
-            f'<text x="119" y="96" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="16" letter-spacing="10" fill="{gold}">GROUP</text></svg>')
+            f'{name}{group}</svg>')
 
 
 # --------------------------------------------------------------------------- MiraTrade
@@ -99,10 +150,11 @@ def mt_app_icon(size):
 def mt_lockup(dark=True):
     kw = {} if dark else LIGHT
     fg, accent = ("#E6EAF2", "#6E9BFF") if dark else ("#0E1726", "#2F5BC8")
+    mira, end = outline("Mira", "IBM Plex Sans", 700, 58, 118, 78, fg, spacing=-2)
+    trade, _ = outline("Trade", "IBM Plex Sans", 300, 58, end, 78, accent, spacing=-2)
     return ('<svg xmlns="http://www.w3.org/2000/svg" width="520" height="120" viewBox="0 0 520 120">'
             f'<g transform="translate(0 10) scale(1.5625)" fill="none">{mt["symbol_body"](100, **kw)}</g>'
-            f'<text x="118" y="78" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="58" letter-spacing="-2">'
-            f'<tspan font-weight="700" fill="{fg}">Mira</tspan><tspan font-weight="300" fill="{accent}">Trade</tspan></text></svg>')
+            f'{mira}{trade}</svg>')
 
 
 if __name__ == "__main__":
@@ -115,10 +167,9 @@ if __name__ == "__main__":
              GROUP_DIR / "simbolo", "mirandas-group-simbolo-monocromo-oscuro")
     save_set(group_app_icon, GROUP_DIR / "icono", "mirandas-group-icono-app")
     save_ico(group_app_icon, GROUP_DIR / "icono" / "mirandas-group.ico")
-    (GROUP_DIR / "firma").mkdir(parents=True, exist_ok=True)
-    (GROUP_DIR / "firma" / "mirandas-group-firma-horizontal.svg").write_text(group_lockup(), encoding="utf-8")
-    (GROUP_DIR / "firma" / "mirandas-group-firma-horizontal-sobre-claro.svg").write_text(
-        group_lockup("#0E1726", "#7F611A"), encoding="utf-8")
+    save_lockup(group_lockup(), GROUP_DIR / "firma", "mirandas-group-firma-horizontal", 560, 120)
+    save_lockup(group_lockup("#0E1726", "#7F611A"), GROUP_DIR / "firma",
+                "mirandas-group-firma-horizontal-sobre-claro", 560, 120)
 
     save_set(mt_symbol, MT_DIR / "simbolo", "miratrade-simbolo-fondo-oscuro")
     save_set(lambda s: mt_symbol(s, **LIGHT), MT_DIR / "simbolo", "miratrade-simbolo-fondo-claro")
@@ -126,7 +177,6 @@ if __name__ == "__main__":
     save_set(lambda s: mt_symbol(s, arrow="#F4B740"), MT_DIR / "simbolo", "miratrade-simbolo-alternativa-ambar")
     save_set(mt_app_icon, MT_DIR / "icono", "miratrade-icono-app")
     save_ico(mt_app_icon, MT_DIR / "icono" / "miratrade.ico")
-    (MT_DIR / "firma").mkdir(parents=True, exist_ok=True)
-    (MT_DIR / "firma" / "miratrade-firma-horizontal-fondo-oscuro.svg").write_text(mt_lockup(True), encoding="utf-8")
-    (MT_DIR / "firma" / "miratrade-firma-horizontal-fondo-claro.svg").write_text(mt_lockup(False), encoding="utf-8")
+    save_lockup(mt_lockup(True), MT_DIR / "firma", "miratrade-firma-horizontal-fondo-oscuro", 520, 120)
+    save_lockup(mt_lockup(False), MT_DIR / "firma", "miratrade-firma-horizontal-fondo-claro", 520, 120)
     print("exported")
