@@ -24,6 +24,14 @@ central en azul MiraTrade y una flecha verde en zigzag que pasa por detrás y ro
 - Tipografía: IBM Plex Sans (texto), IBM Plex Mono (cifras). Las firmas en SVG usan IBM Plex Sans:
   instálala para que se vean correctamente.
 
+## Proporciones (iguales en todas las marcas del grupo)
+
+Marco y barras salen de `fuente-diseno/pilares.py`, la geometría común de Mirandas Group
+(retícula de 64): marco 50×50 con radio 13; barras de 7 de ancho (laterales 27 de alto, central 15,
+colgando de arriba). Grosor del marco según tamaño: 3,4 (≥ 64 px), 4,2 (40–63), 5,0 (24–39),
+6,0 (< 24). El icono de app coloca el símbolo al 81,25 % dentro de la baldosa, igual que el grupo.
+No redibujes ni estires el marco o las barras: cambia solo colores y el elemento propio de la marca.
+
 ## Lienzos (privados, en claude.ai)
 
 - Manual de marca y propuestas: https://claude.ai/artifact/8gmPJYdgAHNYy7TanrFyy1

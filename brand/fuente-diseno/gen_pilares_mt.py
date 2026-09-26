@@ -1,7 +1,12 @@
-"""MiraTrade final mark: the Mirandas Group pillars (blue central pillar) with a rising arrow
-passing BEHIND the three bars and breaking out of the frame."""
+"""MiraTrade final mark: the Mirandas Group pillars (blue central pillar) with a rising zigzag
+arrow passing BEHIND the three bars and breaking out of the frame. Frame and bars come from
+pilares.py, the geometry shared by every Mirandas Group brand."""
 import math
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+from pilares import bars, detail_scale, frame, svg  # noqa: E402
 
 BLUE, IVORY, GREEN, BG, PANEL = "#6E9BFF", "#F5F1E8", "#3FD19B", "#0B0E13", "#0F131A"
 START, TIP = (5.0, 57.0), (59.5, 4.5)
@@ -18,27 +23,29 @@ def arrow_geom(head_len=8.0, half=4.8):
     return base, head
 
 
-def symbol(size, bg=BG, frame=BLUE, side=IVORY, mid=BLUE, arrow=GREEN, sw=1.0, label="", head_len=8.0, half=4.8):
-    base, head = arrow_geom(head_len, half)
-    aria = f'role="img" aria-label="{label}"' if label else 'aria-hidden="true"'
+def symbol_body(size, bg=BG, frame_c=BLUE, side=IVORY, mid=BLUE, arrow=GREEN):
+    sw = detail_scale(size)
+    hs = 1.0 if size >= 40 else 1.25 if size >= 24 else 1.5          # arrowhead grows when small
+    base, head = arrow_geom(8.0 * hs, 4.8 * hs)
     pts = " ".join(f"{x},{y}" for x, y in [START, *VERTS]) + f" {base[0]:.2f},{base[1]:.2f}"
-    line = f'points="{pts}"'
-    edge = f'stroke="{bg}" stroke-width="{2.4 * sw:.1f}"'
-    return f"""<svg width="{size}" height="{size}" viewBox="0 0 64 64" fill="none" {aria}>
-<rect x="7" y="9" width="50" height="50" rx="13" stroke="{frame}" stroke-width="{3.4 * sw:.1f}"></rect>
-<polyline {line} stroke="{bg}" stroke-width="{8 * sw:.1f}" stroke-linecap="round" stroke-linejoin="round"></polyline>
-<polygon points="{head}" fill="{bg}" stroke="{bg}" stroke-width="{3.5 * sw:.1f}" stroke-linejoin="round"></polygon>
-<polyline {line} stroke="{arrow}" stroke-width="{3.4 * sw:.1f}" stroke-linecap="round" stroke-linejoin="round"></polyline>
-<polygon points="{head}" fill="{arrow}" stroke="{arrow}" stroke-width="1" stroke-linejoin="round"></polygon>
-<rect x="18" y="21" width="7" height="27" rx="2" fill="{side}" {edge}></rect>
-<rect x="28.5" y="21" width="7" height="15" rx="2" fill="{mid}" {edge}></rect>
-<rect x="39" y="21" width="7" height="27" rx="2" fill="{side}" {edge}></rect>
-</svg>"""
+    return (frame(size, frame_c)
+            + f'<polyline points="{pts}" stroke="{bg}" stroke-width="{8 * sw:.2f}" stroke-linecap="round" stroke-linejoin="round"/>'
+            + f'<polygon points="{head}" fill="{bg}" stroke="{bg}" stroke-width="{3.5 * sw:.2f}" stroke-linejoin="round"/>'
+            + f'<polyline points="{pts}" stroke="{arrow}" stroke-width="{3.4 * sw:.2f}" stroke-linecap="round" stroke-linejoin="round"/>'
+            + f'<polygon points="{head}" fill="{arrow}" stroke="{arrow}" stroke-width="1" stroke-linejoin="round"/>'
+            + bars(side, mid, halo=bg, halo_width=2.4 * sw))
 
 
-GROUP = ('<svg width="18" height="18" viewBox="0 0 64 64" fill="none" aria-hidden="true"><rect x="7" y="9" width="50" height="50" rx="13" '
-         'stroke="#C9A24A" stroke-width="5"></rect><rect x="18" y="21" width="7" height="27" rx="2" fill="#F5F1E8"></rect>'
-         '<rect x="28.5" y="21" width="7" height="15" rx="2" fill="#C9A24A"></rect><rect x="39" y="21" width="7" height="27" rx="2" fill="#F5F1E8"></rect></svg>')
+def symbol(size, bg=BG, frame=BLUE, side=IVORY, mid=BLUE, arrow=GREEN, label=""):
+    out = svg(size, symbol_body(size, bg, frame, side, mid, arrow))
+    if label:
+        out = out.replace('fill="none">', f'fill="none" role="img" aria-label="{label}">', 1)
+    else:
+        out = out.replace('fill="none">', 'fill="none" aria-hidden="true">', 1)
+    return out
+
+
+GROUP = svg(18, frame(18, "#C9A24A") + bars("#F5F1E8", "#C9A24A")).replace('fill="none">', 'fill="none" aria-hidden="true">', 1)
 
 page = f"""<!doctype html>
 <html lang="es">
@@ -99,9 +106,9 @@ a{{color:#6E9BFF}}a:hover{{color:#9BBAFF}}
     <span class="lbl" style="margin-top: 4px">ICONO DE APP Y FAVICON</span>
     <div style="display: flex; align-items: flex-end; gap: 24px">
       <div style="width: 140px; height: 140px; border-radius: 32px; background: #12161D; border: 1px solid #2A3240; display: flex; align-items: center; justify-content: center">{symbol(114, bg="#12161D")}</div>
-      {symbol(48, sw=1.2)}
-      {symbol(32, sw=1.45, head_len=10, half=6)}
-      {symbol(16, sw=1.9, head_len=12, half=7.5)}
+      {symbol(48)}
+      {symbol(32)}
+      {symbol(16)}
       <p class="v" style="margin: 0 0 2px; max-width: 330px; color: #9AA4B2">En tamaños pequeños la flecha y el marco engruesan y la punta crece, para que la subida se siga leyendo en la pestaña del navegador.</p>
     </div>
   </section>
@@ -118,5 +125,5 @@ class Component extends DCLogic {{
 here = Path(__file__).parent
 (here / "project" / "Logo-Velas.dc.html").write_text(page, encoding="utf-8")
 (here / "miratrade-mark-final.svg").write_text(symbol(512), encoding="utf-8")
-(here / "miratrade-mark-16.svg").write_text(symbol(16, sw=1.9, head_len=12, half=7.5), encoding="utf-8")
+(here / "miratrade-mark-16.svg").write_text(symbol(16), encoding="utf-8")
 print("ok")
