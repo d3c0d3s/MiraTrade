@@ -60,3 +60,14 @@ def test_simulate_target_and_stop():
     gap = _bars([100, 100, 95], [100, 100.5, 96], [99, 99.5, 94], [100, 100, 95])
     t = simulate(gap, 0, cfg)
     assert t["exit_reason"] == "stop" and t["exit"] == 95     # gap fills at the open, not the stop
+
+
+def test_no_trades_below_min_price():
+    from miratrade.backtest import build_panel, run_trades
+    from miratrade.synthetic import make_market
+
+    prices, insiders, flow = make_market(n_tickers=3)
+    cheap = {t: df * [0.03, 0.03, 0.03, 0.03, 1] if t != "SPY" else df for t, df in prices.items()}
+    cfg = Config()
+    trades = run_trades(build_panel(cheap, insiders, flow, cfg), cfg=cfg)   # ~$3 stocks
+    assert trades.empty or set(trades["ticker"]) == {"SPY"}

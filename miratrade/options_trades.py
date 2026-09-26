@@ -24,6 +24,8 @@ _N = NormalDist()
 
 
 def bs_price(s: float, k: float, t: float, r: float, sigma: float, kind: str = "C") -> float:
+    if s <= 0:  # a stop below zero: the stock is worthless there
+        return 0.0 if kind == "C" else k * math.exp(-r * max(t, 0))
     if t <= 0 or sigma <= 0:
         return max(0.0, s - k) if kind == "C" else max(0.0, k - s)
     d1 = (math.log(s / k) + (r + 0.5 * sigma ** 2) * t) / (sigma * math.sqrt(t))
@@ -96,6 +98,6 @@ def simulate_option(trade: dict, vol: float, p: OptionParams) -> dict:
         "opt_strike": c["strike"], "opt_expiry": pd.Timestamp(c["expiry"]),
         "opt_delta": round(c["delta"], 2), "opt_iv": round(c["sigma"], 3),
         "opt_entry": c["ask"], "opt_exit": exit_bid,
-        "opt_ret": exit_bid / c["ask"] - 1,
+        "opt_ret": exit_bid / c["ask"] - 1 if c["ask"] > 0 else np.nan,
         "opt_r": (exit_bid - c["ask"]) / risk if risk > 0 else np.nan,
     }

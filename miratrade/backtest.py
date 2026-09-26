@@ -138,6 +138,8 @@ def run_trades(panel: dict[str, pd.DataFrame], start: pd.Timestamp | None = None
         for i in np.flatnonzero(trigger.to_numpy()):
             if i <= busy_until or (start is not None and ind.index[i] < start):
                 continue
+            if ind["close"].iat[i] < cfg.trade.min_price:
+                continue
             trade = simulate(ind, i, cfg, delisted=t in delisted)
             if trade is None:
                 continue

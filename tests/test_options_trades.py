@@ -44,3 +44,10 @@ def test_simulated_call_follows_the_stock():
 def test_contract_pricing_includes_spread():
     c = option_contract(50.0, date(2026, 9, 24), 0.4, OptionParams())
     assert c["ask"] > c["mid"] > 0 and c["strike"] % 1.0 == 0
+
+
+def test_bs_price_with_stop_below_zero():
+    from miratrade.options_trades import bs_price
+
+    assert bs_price(-0.4, 1.0, 0.1, 0.04, 0.8) == 0.0          # call on a worthless stock
+    assert bs_price(0.0, 1.0, 0.0, 0.04, 0.8, kind="P") == 1.0

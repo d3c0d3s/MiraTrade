@@ -44,6 +44,7 @@ class TradeParams:
     stop_atr: float = 1.5               # initial stop distance in ATRs
     target_atr: float = 3.0             # profit target in ATRs (2R)
     max_hold_days: int = 15             # time stop
+    min_price: float = 5.0              # skip signals on stocks below this (illiquid, few options)
     entry: str = "next_open"            # enter at next session's open to avoid look-ahead bias
 
 
