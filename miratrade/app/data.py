@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -10,9 +9,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from miratrade.config import APP_DIR, Config, load_user_config
+from miratrade.config import APP_DIR, REPORTS_DIR, Config, load_user_config
 
-REPORTS_DIR = Path(os.environ.get("MIRATRADE_REPORTS", "reports"))
 SETTINGS_PATH = APP_DIR / "settings.json"
 SCAN_DIR = APP_DIR / "scan"
 _WINDOW = re.compile(r"Window: \*\*(\S+) → (\S+)\*\*")

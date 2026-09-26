@@ -213,3 +213,20 @@ def test_market_data_settings_need_consent_for_research_sources(window, monkeypa
     s.save()
     saved = json.loads(s.settings_path.read_text(encoding="utf-8"))
     assert saved["data"] == {"price_source": "research", "quote_broker": "etrade"}
+
+
+def test_data_folders_do_not_depend_on_the_launch_directory(tmp_path, monkeypatch):
+    """A desktop shortcut starts the app in .venv/Scripts: the cache and the reports must still
+    be the ones in the checkout, or every analysis re-downloads everything."""
+    import subprocess
+    import sys
+
+    code = ("from miratrade.config import CACHE_DIR, REPORTS_DIR, base_dir;"
+            "print(CACHE_DIR.is_absolute(), REPORTS_DIR.is_absolute(), CACHE_DIR.parent == base_dir())")
+    out = subprocess.run([sys.executable, "-c", code], cwd=tmp_path, capture_output=True, text=True, check=True)
+    assert out.stdout.split() == ["True", "True", "True"]
+
+    monkeypatch.setenv("MIRATRADE_REPORTS", str(tmp_path / "otros"))
+    code = "from miratrade.config import data_dir; print(data_dir('MIRATRADE_REPORTS', 'reports'))"
+    out = subprocess.run([sys.executable, "-c", code], cwd=tmp_path, capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == str(tmp_path / "otros")            # the variable still wins

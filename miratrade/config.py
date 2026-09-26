@@ -5,7 +5,27 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-CACHE_DIR = Path(os.environ.get("MIRATRADE_CACHE", ".cache"))
+# User settings (live trading on/off, risk limits) live outside the repo.
+APP_DIR = Path(os.environ.get("MIRATRADE_HOME", Path(os.environ.get("APPDATA", Path.home())) / "MiraTrade"))
+
+
+def base_dir() -> Path:
+    """Where the downloaded data and the reports live. It is the checkout when running from
+    source and ``APP_DIR`` once installed — never the current directory, which depends on how the
+    app was launched (a desktop shortcut starts it in ``.venv/Scripts``)."""
+    root = Path(__file__).resolve().parent.parent
+    return root if (root / "pyproject.toml").exists() else APP_DIR
+
+
+def data_dir(env_var: str, default: str) -> Path:
+    """An absolute folder: ``$env_var`` if set (relative to the current directory, as typed),
+    else ``default`` inside :func:`base_dir`."""
+    value = os.environ.get(env_var)
+    return Path(value).expanduser().resolve() if value else base_dir() / default
+
+
+CACHE_DIR = data_dir("MIRATRADE_CACHE", ".cache")
+REPORTS_DIR = data_dir("MIRATRADE_REPORTS", "reports")
 
 # SEC requires a descriptive User-Agent with contact info on every request.
 SEC_USER_AGENT = os.environ.get("MIRATRADE_SEC_UA", "MiraTrade research contact@example.com")
@@ -152,10 +172,6 @@ class DataParams:
     quote_broker: str = "schwab"        # live quotes and option chains: "schwab" | "etrade"
     # "research" = public web sources (Yahoo via yfinance, Stooq, CBOE's page). Their terms allow
     # personal, non-commercial use at most: off by default, never the default of a shipped app.
-
-
-# User settings (live trading on/off, risk limits) live outside the repo.
-APP_DIR = Path(os.environ.get("MIRATRADE_HOME", Path(os.environ.get("APPDATA", Path.home())) / "MiraTrade"))
 
 
 @dataclass
