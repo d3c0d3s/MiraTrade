@@ -12,10 +12,14 @@ dependencies = ["pandas>=2.0", "numpy>=1.24", "requests>=2.31"]
 [project.optional-dependencies]
 yf = ["yfinance>=0.2.40"]
 schwab = ["schwab-py>=1.5", "keyring>=25"]
-dev = ["pytest>=7"]
+app = ["PySide6>=6.7"]
+dev = ["pytest>=7", "pytest-qt>=4"]
 
 [project.scripts]
 miratrade = "miratrade.cli:main"
+
+[project.gui-scripts]
+miratrade-app = "miratrade.app.main:run"
 
 [tool.setuptools.packages.find]
 include = ["miratrade*"]
