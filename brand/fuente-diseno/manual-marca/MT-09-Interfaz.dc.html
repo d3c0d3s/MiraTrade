@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>MiraTrade · 09 Interfaz</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@300;400;500;600;700&amp;family=IBM+Plex+Serif:wght@500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0E13;font-family:'IBM Plex Sans',sans-serif;color:#E6EAF2}
+a{color:#6E9BFF}a:hover{color:#9BBAFF}
+.mono{font-family:'IBM Plex Mono',monospace}
+.lbl{font-size:12px;color:#9AA4B2;text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+.h1{font-size:44px;font-weight:600;line-height:1.1;letter-spacing:-.02em;margin:0}
+.h2{font-size:17px;font-weight:600;margin:0}
+.p{font-size:14px;line-height:1.6;margin:0;color:#C4CCD8}
+.small{font-size:12.5px;line-height:1.55;margin:0;color:#C4CCD8}
+.card{border:1px solid #1E242E;border-radius:12px;background:#0F131A}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:500;border:1px solid #2A3240}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 18px;border-radius:8px;border:1px solid #2A3240;background:#12161D;color:#E6EAF2;font:500 14px 'IBM Plex Sans',sans-serif;text-decoration:none;cursor:pointer}
+.primary{background:#3562D1;border-color:#3562D1;color:#FFFFFF}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; padding: 40px 56px 44px; background: #0B0E13; color: #E6EAF2; display: flex; flex-direction: column; gap: 26px; overflow: hidden"><div style="display: flex; justify-content: space-between; align-items: center"><span class="lbl" style="">MiraTrade · Manual de marca</span><span class="lbl" style="">09 / 12 · Interfaz</span></div><div style="display: flex; flex-direction: column; gap: 10px; max-width: 1000px"><h1 class="h1">Interfaz</h1><p class="p" style="font-size: 16px">Los componentes de la app de escritorio, con las reglas que la hacen segura de usar.</p></div><div style="display: flex; gap: 40px; flex-grow: 1"><div style="display: flex; flex-direction: column; gap: 12px; flex: 1"><span class="lbl" style="">Botones</span><div style="display: flex; gap: 10px; flex-wrap: wrap"><button type="button" class="btn primary">Vista previa en Schwab</button><button type="button" class="btn">Añadir a práctica</button><button type="button" class="btn" style="background: #3A1614; border-color: #8C3A33; color: #FFB4AA; font-weight: 600">Detener todo</button></div><span class="lbl" style="margin-top: 8px">Estados y tipos de evento</span><div style="display: flex; gap: 8px; flex-wrap: wrap"><span class="pill" style="border-color: #6E9BFF; color: #BFD0FF; font-weight: 600">● MODO PRÁCTICA</span><span class="pill" style="border-color: #FF8A7A; color: #FFD2CC; background: #3A1614; font-weight: 600">● DINERO REAL</span><span class="pill" style="color: #F4B740; border-color: #6B5320">◆ Directivos</span><span class="pill" style="color: #B79CFF; border-color: #4F4470">● Opciones</span><span class="pill" style="color: #F472B6; border-color: #6B2E52">■ 13D</span></div><span class="lbl" style="margin-top: 8px">Campo</span><div style="display: flex; flex-direction: column; gap: 6px; max-width: 320px"><label for="risk" style="font-size: 13px; color: #9AA4B2">Riesgo por operación (%)</label><input id="risk" value="1,0" style="min-height: 40px; padding: 0 10px; border-radius: 8px; border: 1px solid #2A3240; background: #0B0E13; color: #E6EAF2; font: 14px 'IBM Plex Mono', monospace"></div><span class="lbl" style="margin-top: 8px">Caja de evidencia</span><div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 10px; background: #12161D; border: 1px solid #1E242E; max-width: 330px"><span style="font-size: 14px; font-weight: 600">Evidencia</span><span style="font-size: 14px; line-height: 1.5; color: #C4CCD8">[N] eventos parecidos. [X] % llegó al objetivo, [Y] % al stop. Regla [confirmada / no confirmada] fuera de muestra.</span></div></div><div style="display: flex; flex-direction: column; gap: 10px; flex: 0 0 340px"><span class="lbl" style="">Tarjeta de evento</span><div style="display: flex; flex-direction: column; gap: 7px; padding: 14px 16px; border-radius: 12px; border: 1px solid #6E9BFF; background: #141C2E"><div style="display: flex; justify-content: space-between; align-items: center"><span class="mono" style="font-size: 17px; font-weight: 600">ACME</span><span class="pill" style="color: #F4B740; border-color: #6B5320">◆ Directivos</span></div><span style="font-size: 14px; line-height: 1.45; color: #C4CCD8">3 directivos compraron acciones, el CEO incluido</span></div><div style="display: flex; flex-direction: column; gap: 7px; padding: 14px 16px; border-radius: 12px; border: 1px solid #1E242E; background: #12161D"><div style="display: flex; justify-content: space-between; align-items: center"><span class="mono" style="font-size: 17px; font-weight: 600">NOVA</span><span class="pill" style="color: #B79CFF; border-color: #4F4470">● Opciones</span></div><span style="font-size: 14px; line-height: 1.45; color: #C4CCD8">Calls a 30 días muy por encima del interés abierto</span></div></div><div style="display: flex; flex-direction: column; gap: 8px; flex: 1"><span class="lbl" style="">Reglas</span><div><div style="padding: 10px 0; border-bottom: 1px solid #1E242E; display: flex; flex-direction: column; gap: 3px"><span class="h2" style="font-size: 15px">Un botón principal por pantalla</span><p class="small">Azul relleno, texto blanco. El resto, secundarios.</p></div><div style="padding: 10px 0; border-bottom: 1px solid #1E242E; display: flex; flex-direction: column; gap: 3px"><span class="h2" style="font-size: 15px">Detener todo, siempre visible</span><p class="small">Rojo apagado en la cabecera. Nunca se esconde en un menú.</p></div><div style="padding: 10px 0; border-bottom: 1px solid #1E242E; display: flex; flex-direction: column; gap: 3px"><span class="h2" style="font-size: 15px">Práctica o dinero real, siempre a la vista</span><p class="small">Una píldora en la cabecera dice en qué modo estás.</p></div><div style="padding: 10px 0; border-bottom: 1px solid #1E242E; display: flex; flex-direction: column; gap: 3px"><span class="h2" style="font-size: 15px">Toda señal muestra su evidencia</span><p class="small">Aciertos y fallos juntos, con el número de casos.</p></div><div style="padding: 10px 0; border-bottom: 1px solid #1E242E; display: flex; flex-direction: column; gap: 3px"><span class="h2" style="font-size: 15px">Objetivos de 44 px</span><p class="small">Botones y filas de navegación miden al menos 44 px de alto.</p></div><div style="padding: 10px 0; border-bottom: 1px solid #1E242E; display: flex; flex-direction: column; gap: 3px"><span class="h2" style="font-size: 15px">Foco visible</span><p class="small">Borde azul de 2 px al navegar con el teclado.</p></div></div></div></div></div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

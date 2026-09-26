@@ -14,6 +14,24 @@ central en azul MiraTrade y una flecha verde en zigzag que pasa por detrás y ro
 | `manual/` | PDF exportado del lienzo del manual de marca |
 | `fuente-diseno/` | Fuentes editables: tableros del lienzo (`manual-marca/`, `mockup-app/`) y los generadores en Python |
 
+## Manual, publicidad y web (v1.0, septiembre 2026)
+
+En el lienzo del manual hay tres páginas nuevas:
+
+- **Manual** (12 láminas): portada, esencia y voz, símbolo, construcción, versiones y tamaños, firma,
+  color, tipografía, interfaz, gráficos e infografía, voz y usos incorrectos, aplicaciones.
+- **Publicidad**, a tamaño real: 2 posts de 1080×1080, infografía de 1080×1350, historia de 1080×1920,
+  cabecera de 1500×500, anuncio de 1200×628 y display de 300×250 y 728×90.
+- **Sitio web**: página de inicio en escritorio (1440) y móvil (390).
+
+La promesa es «Señales con evidencia, no con promesas». Ninguna pieza anuncia aciertos ni
+rentabilidad, porque el análisis de 5 años aún no ha validado ninguna regla. Las cifras van como
+`[N]`, `[X] %` y solo se rellenan con datos del último reporte validado. Toda pieza que hable de
+resultados lleva el aviso de riesgo. Revisa los anuncios pagados con un asesor legal.
+
+Pendiente: precio, sitio web (dominio), Pantone y los datos entre corchetes. Fuentes:
+`fuente-diseno/manual-marca/` (tableros) y `fuente-diseno/gen_manual_mt.py` (generador).
+
 ## Reglas rápidas
 
 - **Fondo oscuro** (`#0B0E13`) para la versión principal. La flecha lleva un filo del color del

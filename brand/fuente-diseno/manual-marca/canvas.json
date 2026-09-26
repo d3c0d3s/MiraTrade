@@ -106,6 +106,182 @@
       "h": 900,
       "title": "MiraTrade · logo final (pilares + flecha)",
       "page": "logo"
+    },
+    "MT-01-Portada.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "page": "manual",
+      "title": "01 · Portada"
+    },
+    "MT-02-Esencia.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "page": "manual",
+      "title": "02 · Esencia"
+    },
+    "MT-03-Simbolo.dc.html": {
+      "x": 3040,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "page": "manual",
+      "title": "03 · Símbolo"
+    },
+    "MT-04-Construccion.dc.html": {
+      "x": 0,
+      "y": 1020,
+      "w": 1440,
+      "h": 900,
+      "page": "manual",
+      "title": "04 · Construcción"
+    },
+    "MT-05-Versiones.dc.html": {
+      "x": 1520,
+      "y": 1020,
+      "w": 1440,
+      "h": 900,
+      "page": "manual",
+      "title": "05 · Versiones y tamaños"
+    },
+    "MT-06-Firma.dc.html": {
+      "x": 3040,
+      "y": 1020,
+      "w": 1440,
+      "h": 900,
+      "page": "manual",
+      "title": "06 · Firma"
+    },
+    "MT-07-Color.dc.html": {
+      "x": 0,
+      "y": 2040,
+      "w": 1440,
+      "h": 900,
+      "page": "manual",
+      "title": "07 · Color"
+    },
+    "MT-08-Tipografia.dc.html": {
+      "x": 1520,
+      "y": 2040,
+      "w": 1440,
+      "h": 900,
+      "page": "manual",
+      "title": "08 · Tipografía"
+    },
+    "MT-09-Interfaz.dc.html": {
+      "x": 3040,
+      "y": 2040,
+      "w": 1440,
+      "h": 900,
+      "page": "manual",
+      "title": "09 · Interfaz"
+    },
+    "MT-10-Graficos.dc.html": {
+      "x": 0,
+      "y": 3060,
+      "w": 1440,
+      "h": 900,
+      "page": "manual",
+      "title": "10 · Gráficos e infografía"
+    },
+    "MT-11-Voz-usos.dc.html": {
+      "x": 1520,
+      "y": 3060,
+      "w": 1440,
+      "h": 900,
+      "page": "manual",
+      "title": "11 · Voz y usos incorrectos"
+    },
+    "MT-12-Aplicaciones.dc.html": {
+      "x": 3040,
+      "y": 3060,
+      "w": 1440,
+      "h": 900,
+      "page": "manual",
+      "title": "12 · Aplicaciones"
+    },
+    "Ad-Post-Promesa.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1080,
+      "h": 1080,
+      "page": "publicidad",
+      "title": "Post 1080 · Promesa"
+    },
+    "Ad-Post-Directivos.dc.html": {
+      "x": 1160,
+      "y": 0,
+      "w": 1080,
+      "h": 1080,
+      "page": "publicidad",
+      "title": "Post 1080 · Directivos"
+    },
+    "Ad-Infografia.dc.html": {
+      "x": 2320,
+      "y": 0,
+      "w": 1080,
+      "h": 1350,
+      "page": "publicidad",
+      "title": "Infografía 1080×1350"
+    },
+    "Ad-Historia.dc.html": {
+      "x": 3480,
+      "y": 0,
+      "w": 1080,
+      "h": 1920,
+      "page": "publicidad",
+      "title": "Historia 1080×1920"
+    },
+    "Ad-Cabecera.dc.html": {
+      "x": 0,
+      "y": 2040,
+      "w": 1500,
+      "h": 500,
+      "page": "publicidad",
+      "title": "Cabecera X / LinkedIn 1500×500"
+    },
+    "Ad-Enlace.dc.html": {
+      "x": 1580,
+      "y": 2040,
+      "w": 1200,
+      "h": 628,
+      "page": "publicidad",
+      "title": "Anuncio enlace 1200×628"
+    },
+    "Ad-Display-300.dc.html": {
+      "x": 2860,
+      "y": 2040,
+      "w": 300,
+      "h": 250,
+      "page": "publicidad",
+      "title": "Display 300×250"
+    },
+    "Ad-Display-728.dc.html": {
+      "x": 3240,
+      "y": 2040,
+      "w": 728,
+      "h": 90,
+      "page": "publicidad",
+      "title": "Display 728×90"
+    },
+    "Web-Inicio-Escritorio.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 4600,
+      "page": "web",
+      "title": "Inicio · escritorio 1440"
+    },
+    "Web-Inicio-Movil.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 390,
+      "h": 2900,
+      "page": "web",
+      "title": "Inicio · móvil 390"
     }
   },
   "createdOnFiles": {
@@ -114,8 +290,8 @@
   },
   "designSystems": [],
   "launch": {
-    "page": "logo",
-    "view": "canvas"
+    "view": "canvas",
+    "page": "manual"
   },
   "notes": {
     "colA": {
@@ -168,6 +344,33 @@
       "w": 240,
       "x": 0,
       "y": 3640
+    },
+    "mtManualTitle": {
+      "kind": "title1",
+      "maxW": 4400,
+      "page": "manual",
+      "w": 240,
+      "x": 0,
+      "y": -300,
+      "text": "MiraTrade · Manual de marca v1.0"
+    },
+    "mtAdsTitle": {
+      "kind": "title1",
+      "maxW": 4560,
+      "page": "publicidad",
+      "w": 240,
+      "x": 0,
+      "y": -300,
+      "text": "Publicidad · piezas a tamaño real"
+    },
+    "mtWebTitle": {
+      "kind": "title1",
+      "maxW": 1910,
+      "page": "web",
+      "w": 240,
+      "x": 0,
+      "y": -300,
+      "text": "Sitio web · página de inicio"
     }
   },
   "order": [
@@ -184,7 +387,29 @@
     "C-App2.dc.html",
     "Competencia.dc.html",
     "Logo-Conceptos.dc.html",
-    "Logo-Velas.dc.html"
+    "Logo-Velas.dc.html",
+    "MT-01-Portada.dc.html",
+    "MT-02-Esencia.dc.html",
+    "MT-03-Simbolo.dc.html",
+    "MT-04-Construccion.dc.html",
+    "MT-05-Versiones.dc.html",
+    "MT-06-Firma.dc.html",
+    "MT-07-Color.dc.html",
+    "MT-08-Tipografia.dc.html",
+    "MT-09-Interfaz.dc.html",
+    "MT-10-Graficos.dc.html",
+    "MT-11-Voz-usos.dc.html",
+    "MT-12-Aplicaciones.dc.html",
+    "Ad-Post-Promesa.dc.html",
+    "Ad-Post-Directivos.dc.html",
+    "Ad-Infografia.dc.html",
+    "Ad-Historia.dc.html",
+    "Ad-Cabecera.dc.html",
+    "Ad-Enlace.dc.html",
+    "Ad-Display-300.dc.html",
+    "Ad-Display-728.dc.html",
+    "Web-Inicio-Escritorio.dc.html",
+    "Web-Inicio-Movil.dc.html"
   ],
   "pages": [
     {
@@ -198,6 +423,18 @@
     {
       "id": "logo",
       "name": "Logo"
+    },
+    {
+      "id": "manual",
+      "name": "Manual"
+    },
+    {
+      "id": "publicidad",
+      "name": "Publicidad"
+    },
+    {
+      "id": "web",
+      "name": "Sitio web"
     }
   ],
   "title": "MiraTrade — Manual de marca"
