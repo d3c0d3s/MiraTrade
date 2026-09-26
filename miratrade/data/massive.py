@@ -12,6 +12,7 @@ profile would have bought, and replace the Black-Scholes estimate with real pric
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import time
@@ -51,10 +52,12 @@ class MassiveClient:
         self._last = -1e9
         self.requests = 0
 
-    def get(self, path: str, params: dict | None = None) -> dict:
-        key = re.sub(r"[^A-Za-z0-9._-]", "_", path + "?" + "&".join(f"{k}={v}" for k, v in sorted((params or {}).items())))
-        cached = self.cache_dir / f"{key[:180]}.json"
-        if cached.exists():
+    def get(self, path: str, params: dict | None = None, cache: bool = True) -> dict:
+        """``cache=False`` for answers that can still change (active contracts, bars up to today)."""
+        full = path + "?" + "&".join(f"{k}={v}" for k, v in sorted((params or {}).items()))
+        name = re.sub(r"[^A-Za-z0-9._-]", "_", full)[:120] + "_" + hashlib.sha1(full.encode()).hexdigest()[:12]
+        cached = self.cache_dir / f"{name}.json"
+        if cache and cached.exists():
             return json.loads(cached.read_text(encoding="utf-8"))
         for attempt in range(4):
             wait = self.interval - (time.monotonic() - self._last)
@@ -74,13 +77,14 @@ class MassiveClient:
         else:
             resp.raise_for_status()
             data = resp.json()
-        cached.write_text(json.dumps(data), encoding="utf-8")
+        if cache:
+            cached.write_text(json.dumps(data), encoding="utf-8")
         return data
 
     def daily_bars(self, ticker: str, start: date, end: date) -> pd.DataFrame:
         """Daily OHLCV + VWAP of one option contract (empty if it never traded / doesn't exist)."""
         data = self.get(f"/v2/aggs/ticker/{ticker}/range/1/day/{start:%Y-%m-%d}/{end:%Y-%m-%d}",
-                        {"adjusted": "true", "sort": "asc", "limit": 50000})
+                        {"adjusted": "true", "sort": "asc", "limit": 50000}, cache=end < date.today())
         rows = data.get("results") or []
         df = pd.DataFrame(rows, columns=["t", "o", "h", "l", "c", "v", "vw", "n"])
         idx = pd.to_datetime(df["t"], unit="ms", utc=True).dt.tz_convert("America/New_York")
@@ -89,12 +93,16 @@ class MassiveClient:
                                   "vw": "vwap", "n": "trades"}).drop(columns="t")
 
     def contracts(self, underlying: str, expiry: date, kind: str = "call", as_of: date | None = None) -> pd.DataFrame:
-        """Listed contracts of one expiry (expired ones included), to find the real strike grid."""
+        """Listed contracts of one expiry, to find the real strike grid. Massive's ``expired=true``
+        returns *only* contracts already expired as of ``as_of`` (default today), so the flag
+        follows that date."""
+        ref = as_of or date.today()
         params = {"underlying_ticker": underlying.upper(), "expiration_date": f"{expiry:%Y-%m-%d}",
-                  "contract_type": kind, "limit": 1000, "expired": "true"}
+                  "contract_type": kind, "limit": 1000, "expired": str(expiry < ref).lower()}
         if as_of:
             params["as_of"] = f"{as_of:%Y-%m-%d}"
-        rows = self.get("/v3/reference/options/contracts", params).get("results") or []
+        final = expiry < date.today()       # a finished expiry's listing no longer changes
+        rows = self.get("/v3/reference/options/contracts", params, cache=final).get("results") or []
         return pd.DataFrame(rows, columns=["ticker", "underlying_ticker", "expiration_date", "strike_price",
                                            "contract_type", "shares_per_contract"])
 

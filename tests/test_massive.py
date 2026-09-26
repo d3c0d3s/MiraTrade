@@ -45,13 +45,16 @@ def test_occ_ticker():
 
 def test_key_in_header_not_url_and_responses_cached(tmp_path):
     c = _client(tmp_path, [("/v2/aggs/", Resp(200, {"results": [BAR]}))])
-    bars = c.daily_bars("O:ACME261120C00045000", date(2026, 9, 1), date(2026, 10, 1))
+    bars = c.daily_bars("O:ACME260821C00045000", date(2025, 7, 1), date(2025, 8, 1))   # finished: cached
     assert bars["close"].iat[0] == 5.5 and str(bars.index[0].date()) == "2026-09-26"
     url, params = c.session.calls[0]
     assert c.session.headers["Authorization"] == "Bearer SECRET"
     assert "SECRET" not in url and "SECRET" not in str(params)
-    c.daily_bars("O:ACME261120C00045000", date(2026, 9, 1), date(2026, 10, 1))
+    c.daily_bars("O:ACME260821C00045000", date(2025, 7, 1), date(2025, 8, 1))
     assert len(c.session.calls) == 1                                  # second time from the cache
+    c.daily_bars("O:ACME261120C00045000", date(2026, 9, 1), date.today())
+    c.daily_bars("O:ACME261120C00045000", date(2026, 9, 1), date.today())
+    assert len(c.session.calls) == 3                                  # up to today: never cached
     assert not any("SECRET" in p.read_text() for p in tmp_path.iterdir())
 
 
@@ -85,3 +88,12 @@ def test_missing_key(tmp_path):
             return None
     with pytest.raises(RuntimeError, match="massive setup"):
         MassiveClient(cache_dir=tmp_path, store=Empty())
+
+
+def test_expired_flag_follows_the_expiry(tmp_path):
+    c = _client(tmp_path, [("/v3/reference/options/contracts", Resp(200, {"results": []}))])
+    c.contracts("SPY", date(2020, 1, 17))
+    c.contracts("SPY", date(2099, 1, 16))
+    c.contracts("SPY", date(2025, 12, 19), as_of=date(2025, 11, 3))    # live on that date
+    flags = [params["expired"] for _, params in c.session.calls]
+    assert flags == ["true", "false", "false"]   # expired=true returns ONLY contracts expired by as_of
