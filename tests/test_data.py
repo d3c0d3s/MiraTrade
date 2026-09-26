@@ -84,3 +84,45 @@ def test_parse_cboe_chain():
         {"option": "XYZ261016P00095000", "volume": 0, "open_interest": 100, "last_trade_price": 1.0}]}}
     df = parse_cboe_chain(payload, date(2026, 9, 24))
     assert len(df) == 1 and df.iloc[0].premium == 500_000 and df.iloc[0].strike == 105
+
+
+class _Resp:
+    def __init__(self, status, content=b"ok"):
+        self.status_code, self.content = status, content
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(self.status_code)
+
+
+def _client(tmp_path, statuses):
+    from miratrade.data.sec import SecClient
+
+    c = SecClient(user_agent="test test@example.com", cache_dir=tmp_path, retries=3, backoff=0)
+    replies = iter(_Resp(s) for s in statuses)
+    c.session.get = lambda url, timeout: next(replies)
+    return c
+
+
+def test_sec_client_retries_transient_errors(tmp_path):
+    c = _client(tmp_path, [503, 429, 200])
+    assert c.get("https://www.sec.gov/x.txt") == b"ok"
+    assert (tmp_path / "www.sec.gov_x.txt").exists()
+
+
+def test_sec_client_gives_up_after_retries(tmp_path):
+    import pytest
+
+    c = _client(tmp_path, [503] * 4)
+    with pytest.raises(RuntimeError):
+        c.get("https://www.sec.gov/y.txt")
+    assert _client(tmp_path, [404]).get("https://www.sec.gov/z.txt") is None
+
+
+def test_sec_client_missing_statuses(tmp_path):
+    import pytest
+
+    # EDGAR answers a holiday's missing daily index with 403, not 404.
+    assert _client(tmp_path, [403]).get("https://www.sec.gov/idx", missing=(403, 404)) is None
+    with pytest.raises(RuntimeError):
+        _client(tmp_path, [403]).get("https://www.sec.gov/other")

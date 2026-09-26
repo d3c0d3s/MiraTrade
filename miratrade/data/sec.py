@@ -28,34 +28,55 @@ INSIDER_COLUMNS = [
     "value", "owned_after", "delta_own_pct",
 ]
 
-BULK_URL = ("https://www.sec.gov/files/structureddata/data/insider-transactions-data-sets/"
-            "{year}q{q}_form345.zip")
+# The SEC moved the data sets from 2026 Q2 on; older quarters stay at the original path.
+BULK_URLS = tuple(f"https://www.sec.gov/files/{d}/data/insider-transactions-data-sets/{{year}}q{{q}}_form345.zip"
+                  for d in ("datastandardsinnovation", "structureddata"))
 DAILY_INDEX_URL = "https://www.sec.gov/Archives/edgar/daily-index/{year}/QTR{q}/form.{ymd}.idx"
 ARCHIVE_URL = "https://www.sec.gov/Archives/{path}"
+RETRY_STATUS = {429, 500, 502, 503, 504}
 
 
 class SecClient:
-    """Polite EDGAR client: required User-Agent, <=8 req/s, on-disk cache."""
+    """Polite EDGAR client: required User-Agent, <=8 req/s, on-disk cache, retries with
+    backoff on rate limiting and transient server errors."""
 
-    def __init__(self, user_agent: str = SEC_USER_AGENT, cache_dir: Path = CACHE_DIR / "sec"):
+    def __init__(self, user_agent: str = SEC_USER_AGENT, cache_dir: Path = CACHE_DIR / "sec",
+                 retries: int = 4, backoff: float = 2.0):
         import requests
 
         self.session = requests.Session()
         self.session.headers["User-Agent"] = user_agent
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.retries, self.backoff = retries, backoff
         self._last = 0.0
 
-    def get(self, url: str, cache: bool = True) -> bytes | None:
-        key = self.cache_dir / re.sub(r"[^A-Za-z0-9._-]", "_", url.split("://", 1)[-1])
-        if cache and key.exists():
-            return key.read_bytes()
+    def _throttled_get(self, url: str):
         wait = 0.125 - (time.monotonic() - self._last)
         if wait > 0:
             time.sleep(wait)
         self._last = time.monotonic()
-        resp = self.session.get(url, timeout=60)
-        if resp.status_code == 404:
+        return self.session.get(url, timeout=60)
+
+    def get(self, url: str, cache: bool = True, missing: tuple[int, ...] = (404,)) -> bytes | None:
+        """``None`` when the response status is in ``missing``. EDGAR's archive answers a
+        file that does not exist (e.g. the daily index of a holiday) with 403, not 404."""
+        import requests
+
+        key = self.cache_dir / re.sub(r"[^A-Za-z0-9._-]", "_", url.split("://", 1)[-1])
+        if cache and key.exists():
+            return key.read_bytes()
+        for attempt in range(self.retries + 1):
+            try:
+                resp = self._throttled_get(url)
+            except requests.ConnectionError:
+                if attempt == self.retries:
+                    raise
+            else:
+                if resp.status_code not in RETRY_STATUS or attempt == self.retries:
+                    break
+            time.sleep(self.backoff * 2 ** attempt)
+        if resp.status_code in missing:
             return None
         resp.raise_for_status()
         if cache:
@@ -186,8 +207,14 @@ def fetch_insiders(start: date, end: date, client: SecClient | None = None,
 
     quarters = sorted({(d.year, (d.month - 1) // 3 + 1)
                        for d in pd.date_range(start, end, freq="D").date})
+    failed = 0
     for year, q in quarters:
-        blob = None if (year, q) == current_q else client.get(BULK_URL.format(year=year, q=q))
+        blob = None
+        if (year, q) != current_q:
+            for url in BULK_URLS:
+                blob = client.get(url.format(year=year, q=q))
+                if blob is not None:
+                    break
         if blob is not None:
             frames.append(parse_bulk_zip(blob))
             continue
@@ -195,13 +222,19 @@ def fetch_insiders(start: date, end: date, client: SecClient | None = None,
         q_start = max(start, date(year, 3 * q - 2, 1))
         q_end = min(end, (date(year + (q == 4), 1 if q == 4 else 3 * q + 1, 1) - timedelta(days=1)))
         for day in pd.bdate_range(q_start, q_end).date:
-            idx = client.get(DAILY_INDEX_URL.format(year=year, q=q, ymd=day.strftime("%Y%m%d")))
+            idx = client.get(DAILY_INDEX_URL.format(year=year, q=q, ymd=day.strftime("%Y%m%d")),
+                             missing=(403, 404))
             if idx is None:
                 continue
             filings = parse_daily_index(idx.decode("latin-1"))
             print(f"  {day}: {len(filings)} Form 4 filings", flush=True)
             for path, filed in filings:
-                raw = client.get(ARCHIVE_URL.format(path=path))
+                try:
+                    raw = client.get(ARCHIVE_URL.format(path=path))
+                except Exception as e:  # one filing still failing after retries must not kill the run
+                    failed += 1
+                    print(f"    skipped {path}: {e}", flush=True)
+                    continue
                 if raw is None:
                     continue
                 m = re.search(rb"<ownershipDocument>.*?</ownershipDocument>", raw, re.S)
@@ -214,6 +247,9 @@ def fetch_insiders(start: date, end: date, client: SecClient | None = None,
                 except ET.ParseError:
                     continue
 
+    if failed:
+        print(f"  {failed} Form 4 filings could not be downloaded and were skipped; "
+              "re-run later to fill them in (the rest is cached).", flush=True)
     if not frames:
         return pd.DataFrame(columns=INSIDER_COLUMNS)
     df = pd.concat(frames, ignore_index=True)
