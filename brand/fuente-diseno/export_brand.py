@@ -155,7 +155,7 @@ def group_mini(size, dark=True):
 
 
 # --------------------------------------------------------------------------- MiraTrade
-LIGHT = dict(bg="#F5F7FB", frame_c="#2F5BC8", side="#0E1726", mid="#2F5BC8", arrow="#0E8A5F")
+LIGHT = dict(bg="#F5F7FB", frame_c="#2F5BC8", side="#0E1726", mid="#2F5BC8", arrow="#008A45")
 MONO = dict(bg="#0F131A", frame_c="#E6EAF2", side="#E6EAF2", mid="#8A93A3", arrow="#E6EAF2")
 
 

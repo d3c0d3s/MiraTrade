@@ -109,8 +109,9 @@ class Evidence:
             return "Sin eventos parecidos en el último reporte."
         pct = lambda x: f"{x * 100:.0f} %"  # noqa: E731
         mean = f"{self.mean_return * 100:+.0f}".replace("-", "−")
-        return (f"{self.n:,} eventos parecidos: {pct(self.target)} llegó antes al objetivo, ".replace(",", ".")
-                + f"{pct(self.stop)} al stop y {pct(self.neither)} a ninguno. Resultado medio {mean} %.")
+        n = f"{self.n:,}".replace(",", ".")
+        return (f"{n} eventos parecidos: {pct(self.target)} llegó antes al objetivo, "
+                f"{pct(self.stop)} al stop y {pct(self.neither)} a ninguno. Resultado medio {mean} %.")
 
 
 def _true(ev: Mapping, key: str) -> bool:

@@ -22,9 +22,9 @@ OUT = HERE / "manual-marca"
 BG, PANEL, PANEL2, BORDER, BORDER2 = "#0B0E13", "#0F131A", "#12161D", "#1E242E", "#2A3240"
 TEXT, TEXT2, BODY = "#E6EAF2", "#9AA4B2", "#C4CCD8"
 BLUE, BLUE_HI, PRIMARY = "#6E9BFF", "#9BBAFF", "#3562D1"
-UP, DOWN, INSIDER, OPTIONS, D13 = "#3FD19B", "#FF8A7A", "#F4B740", "#B79CFF", "#F472B6"
+UP, DOWN, INSIDER, OPTIONS, D13 = "#00D26A", "#FF8A7A", "#F4B740", "#B79CFF", "#F472B6"
 IVORY, SEL = "#F5F1E8", "#141C2E"
-L_BG, L_INK, L_BLUE, L_GREEN, L_MUTED = "#F5F7FB", "#0E1726", "#2F5BC8", "#0E8A5F", "#4A5261"
+L_BG, L_INK, L_BLUE, L_GREEN, L_MUTED = "#F5F7FB", "#0E1726", "#2F5BC8", "#008A45", "#4A5261"
 DISCLAIMER = "Análisis, no asesoramiento. Operar conlleva riesgo de pérdida; con opciones puedes perder la prima entera."
 TOTAL = 12
 
@@ -466,7 +466,7 @@ def m11():
                     for n, m in bad_marks)
     yes = ["Probado con cinco años de datos.", "En [N] casos parecidos, [X] % llegó al objetivo.", "Esta regla no se confirmó fuera de muestra.", "Puedes perder la prima entera."]
     no = ["Gana dinero fácil con nuestras señales.", "El 90 % de nuestras señales aciertan.", "¡Última oportunidad, compra ya!", "Sin riesgo."]
-    voice = row(col(row(tick("#3FD19B"), '<span class="h2">Así sí</span>', gap=8, style="align-items: center"),
+    voice = row(col(row(tick("#00D26A"), '<span class="h2">Así sí</span>', gap=8, style="align-items: center"),
                     *(f'<p class="small">«{t}»</p>' for t in yes), gap=8, style="flex: 1"),
                 col(row(cross("#FF8A80"), '<span class="h2">Así no, nunca</span>', gap=8, style="align-items: center"),
                     *(f'<p class="small">«{t}»</p>' for t in no), gap=8, style="flex: 1"), gap=24)

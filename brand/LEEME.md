@@ -36,8 +36,8 @@ Pendiente: precio, sitio web (dominio), Pantone y los datos entre corchetes. Fue
 
 - **Fondo oscuro** (`#0B0E13`) para la versión principal. La flecha lleva un filo del color del
   fondo, así que cada variante está hecha para su fondo: usa `fondo-claro` sobre fondos claros.
-- Colores: marco y pilar central `#6E9BFF`, pilares laterales `#F5F1E8`, flecha `#3FD19B`.
-  Sobre claro: `#2F5BC8`, `#0E1726`, `#0E8A5F`.
+- Colores: marco y pilar central `#6E9BFF`, pilares laterales `#F5F1E8`, flecha `#00D26A`.
+  Sobre claro: `#2F5BC8`, `#0E1726`, `#008A45`.
 - Por debajo de 48 px usa los PNG de tamaño pequeño (trazos engrosados), no un reescalado del grande.
 - Tipografía: IBM Plex Sans (texto), IBM Plex Mono (cifras). En las firmas el nombre va convertido a
   trazos, así que se ven igual sin tener la fuente instalada. Las fuentes (licencia OFL) están en

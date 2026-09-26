@@ -31,7 +31,11 @@ def test_evidence_narrows_while_enough_events_remain():
     assert e.similar_to == ["ins:exec_buy"] and e.n == 40
     assert e.target == 0.75 and e.stop == 0.25 and e.neither == 0
     assert round(e.mean_return, 4) == round(0.75 * 0.4 - 0.25 * 0.25, 4)
-    assert "40 eventos parecidos: 75 %" in e.sentence
+    assert e.sentence == ("40 eventos parecidos: 75 % llegó antes al objetivo, 25 % al stop y 0 % a ninguno. "
+                          "Resultado medio +24 %.")
+    big = Evidence("call45_40", n=1493, target=0.32, stop=0.66, neither=0.02, mean_return=-0.03)
+    assert big.sentence.startswith("1.493 eventos parecidos: 32 % llegó antes al objetivo, 66 % al stop")
+    assert big.sentence.endswith("Resultado medio −3 %.")
 
 
 def test_evidence_without_a_matching_type_or_history():

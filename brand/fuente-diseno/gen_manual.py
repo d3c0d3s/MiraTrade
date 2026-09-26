@@ -226,7 +226,7 @@ def p02():
               'la forma del símbolo, la tipografía, la paleta base y el respaldo «a Mirandas Group company».</p>',
               gap=12, style="flex: 1")
     voice = col(lbl("TONO DE VOZ"),
-                row(col(row(tick("#3FD19B"), '<span class="h2">Así sí</span>', gap=8, style="align-items: center"),
+                row(col(row(tick("#00D26A"), '<span class="h2">Así sí</span>', gap=8, style="align-items: center"),
                         '<p class="small">«Probamos la estrategia con cinco años de datos.»</p>'
                         '<p class="small">«Esto es lo que sabemos y esto lo que no.»</p>', gap=8, style="flex: 1"),
                     col(row(cross("#FF8A80"), '<span class="h2">Así no</span>', gap=8, style="align-items: center"),
@@ -534,7 +534,7 @@ def p11():
         ("No reordenar los pilares", f'<svg width="120" height="120" viewBox="0 0 64 64" fill="none" aria-hidden="true">{base}'
                                      f'<rect x="18" y="21" width="7" height="27" rx="2" fill="{NAVY}"></rect><rect x="28.5" y="33" width="7" height="15" rx="2" fill="{GOLD_L}"></rect>'
                                      f'<rect x="39" y="21" width="7" height="27" rx="2" fill="{NAVY}"></rect></svg>'),
-        ("No cambiar los colores", mark(120, "#B3261E", "#2F5BC8", "#3FD19B")),
+        ("No cambiar los colores", mark(120, "#B3261E", "#2F5BC8", "#00D26A")),
         ("No añadir sombras ni efectos", f'<svg width="120" height="120" viewBox="0 0 64 64" fill="none" aria-hidden="true">'
                                          f'<g transform="translate(3 3)" opacity="0.35"><rect x="7" y="9" width="50" height="50" rx="13" stroke="#000" stroke-width="3.4"></rect>'
                                          f'{pil.bars("#000", "#000")}</g>{base}{pil.bars(NAVY, GOLD_L)}</svg>'),

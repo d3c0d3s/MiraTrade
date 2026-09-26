@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from pilares import bars, detail_scale, frame, svg  # noqa: E402
 
-BLUE, IVORY, GREEN, BG, PANEL = "#6E9BFF", "#F5F1E8", "#3FD19B", "#0B0E13", "#0F131A"
+BLUE, IVORY, GREEN, BG, PANEL = "#6E9BFF", "#F5F1E8", "#00D26A", "#0B0E13", "#0F131A"
 START, TIP = (5.0, 57.0), (59.5, 4.5)
 VERTS = [(21.0, 31.0), (32.0, 45.0)]   # up behind the left bar, V under the blue bar
 
@@ -77,7 +77,7 @@ a{{color:#6E9BFF}}a:hover{{color:#9BBAFF}}
     <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
       <div style="display: flex; flex-direction: column; gap: 3px"><span class="k">Marco y pilares</span><span class="v">el símbolo del grupo tal cual</span></div>
       <div style="display: flex; flex-direction: column; gap: 3px"><span class="k" style="color: #6E9BFF">Pilar central azul</span><span class="v">el color de MiraTrade, según la regla del sistema</span></div>
-      <div style="display: flex; flex-direction: column; gap: 3px"><span class="k" style="color: #3FD19B">Flecha por detrás</span><span class="v">el elemento propio de la marca: la subida que sale del marco</span></div>
+      <div style="display: flex; flex-direction: column; gap: 3px"><span class="k" style="color: #00D26A">Flecha por detrás</span><span class="v">el elemento propio de la marca: la subida que sale del marco</span></div>
     </div>
   </section>
   <section style="display: flex; flex-direction: column; gap: 16px; min-width: 0">
@@ -91,7 +91,7 @@ a{{color:#6E9BFF}}a:hover{{color:#9BBAFF}}
     </div>
     <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px">
       <div class="cell" style="height: 170px; flex-direction: column; gap: 8px; background: #F5F7FB; border-color: #D5DAE2">
-        {symbol(80, bg="#F5F7FB", frame="#2F5BC8", side="#0E1726", mid="#2F5BC8", arrow="#0E8A5F")}
+        {symbol(80, bg="#F5F7FB", frame="#2F5BC8", side="#0E1726", mid="#2F5BC8", arrow="#008A45")}
         <span style="font-size: 12px; color: #4B5563">sobre claro</span>
       </div>
       <div class="cell" style="height: 170px; flex-direction: column; gap: 8px">
