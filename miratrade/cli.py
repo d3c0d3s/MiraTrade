@@ -181,6 +181,9 @@ def main(argv: list[str] | None = None) -> None:
     de.add_argument("--out", default="reports/demo")
     de.set_defaults(func=cmd_demo)
 
+    from miratrade.massive_cli import add_parser as add_massive
+    add_massive(sub)
+
     try:                                    # needs the [schwab] extra
         from miratrade.broker_cli import add_parser as add_schwab
         add_schwab(sub)

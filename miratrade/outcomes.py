@@ -98,6 +98,7 @@ def build_outcomes(panel: dict[str, pd.DataFrame], cfg: Config = Config(),
             cool_until = s + o.event_cooldown
             row = ind.iloc[s]
             rec = {"ticker": t, "signal_date": ind.index[s], "entry_date": ind.index[i], "entry": opens[i],
+                   "rv20": row.get("rv20", np.nan),
                    "mkt_trend": row.get("mkt_trend", "unknown"), "mkt_vol": row.get("mkt_vol", "unknown"),
                    **conditions(row)}
             end = ind.index[i] + pd.DateOffset(months=o.long_months)
