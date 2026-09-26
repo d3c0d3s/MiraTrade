@@ -1,10 +1,10 @@
 """Build the point-in-time feature panel and simulate ATR-bracketed swing trades.
 
-Entry candidates on a bar ``i`` (known at its close) are:
-  * a technical setup (breakout / pullback / oversold bounce), or
-  * a fresh event (a new insider buy filing, a new day of bullish unusual flow, or a new
-    13D / non-index 13G ownership filing).
-Every candidate is traded the same way so that the *conditions* around it can be compared.
+An entry candidate on a bar ``i`` (known at its close) is a fresh event: a new insider buy
+filing, a new day of bullish unusual flow, or a new 13D / non-index 13G ownership filing.
+Technical setups (breakout / pullback / oversold bounce) describe the context of an event
+(``TradeParams.setups_trigger`` makes them triggers of their own again). Every candidate is
+traded the same way so that the *conditions* around it can be compared.
 """
 from __future__ import annotations
 
@@ -120,11 +120,13 @@ def conditions(row: pd.Series) -> dict[str, bool]:
     return c
 
 
-def entry_trigger(ind: pd.DataFrame) -> pd.Series:
-    """Bars on which a candidate trade is taken: a setup completed or a fresh event arrived."""
-    setup_cols = [f"setup_{s}" for s in SETUPS]
-    fresh = ind["ins_fresh"] + ind["flow_fresh"] + ind.get("own_fresh", 0)
-    return (ind[setup_cols].sum(axis=1) > 0) | (fresh > 0)
+def entry_trigger(ind: pd.DataFrame, setups: bool = False) -> pd.Series:
+    """Bars on which a candidate trade is taken: a fresh event arrived (or, with ``setups``,
+    a technical setup completed)."""
+    fresh = (ind["ins_fresh"] + ind["flow_fresh"] + ind.get("own_fresh", 0)) > 0
+    if not setups:
+        return fresh
+    return fresh | (ind[[f"setup_{s}" for s in SETUPS]].sum(axis=1) > 0)
 
 
 def run_trades(panel: dict[str, pd.DataFrame], start: pd.Timestamp | None = None,
@@ -133,7 +135,7 @@ def run_trades(panel: dict[str, pd.DataFrame], start: pd.Timestamp | None = None
     rows = []
     delisted = delisted_tickers(panel, cfg.survivorship.delist_gap_days)
     for t, ind in panel.items():
-        trigger = entry_trigger(ind)
+        trigger = entry_trigger(ind, cfg.trade.setups_trigger)
         busy_until = -1
         for i in np.flatnonzero(trigger.to_numpy()):
             if i <= busy_until or (start is not None and ind.index[i] < start):

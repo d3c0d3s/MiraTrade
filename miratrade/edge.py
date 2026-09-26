@@ -238,7 +238,7 @@ def scan(panel: dict[str, pd.DataFrame], rules: pd.DataFrame, cfg_trade, cfg_opt
     out = []
     for t, ind in panel.items():
         row = ind.iloc[-1]
-        if not np.isfinite(row["atr"]) or not entry_trigger(ind.iloc[[-1]]).iat[0]:
+        if not np.isfinite(row["atr"]) or not entry_trigger(ind.iloc[[-1]], getattr(cfg_trade, "setups_trigger", False)).iat[0]:
             continue
         c = conditions(row)
         hits = [r for r in live.itertuples() if all(c.get(x, False) for x in r.rule.split(" & "))]

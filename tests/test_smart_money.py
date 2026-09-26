@@ -145,16 +145,17 @@ def test_13d_filing_triggers_a_candidate_trade():
 
 
 def test_recovers_planted_13d_edge(tmp_path):
-    prices, ownership = make_13d_market()
+    # Half the new filings are 13Ds with drift, half active 13Gs without: the rules must pick the 13Ds.
+    prices, ownership = make_13d_market(n_tickers=100, drift_after_signal=0.006)
     res = pipeline(prices, NO_INS, NO_FLOW, prices["SPY"].index[-220], tmp_path,
                    ownership=ownership)
     validated = res["rules"][res["rules"]["validated"]]
     assert validated["rule"].str.contains("own:13d|event:13dg").any(), validated["rule"].tolist()
-    assert not res["rules"]["rule"].str.contains("own:13g_active").any()   # index-fund 13Gs ignored
+    assert not validated["rule"].str.contains("own:13g_active").any()     # the no-drift events
 
 
 def test_no_13d_edge_in_pure_noise(tmp_path):
-    prices, ownership = make_13d_market(drift_after_signal=0.0)
+    prices, ownership = make_13d_market(n_tickers=100, drift_after_signal=0.0)
     res = pipeline(prices, NO_INS, NO_FLOW, prices["SPY"].index[-220], tmp_path, ownership=ownership)
     rules = res["rules"]
     assert not (rules["validated"] & rules["rule"].str.contains("own:|event:13dg")).any()

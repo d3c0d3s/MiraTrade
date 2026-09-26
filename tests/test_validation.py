@@ -14,9 +14,10 @@ from miratrade.synthetic import make_market
 
 @lru_cache(maxsize=None)
 def _long_market(drift: float, seed: int = 7):
-    """~1.5 years of trades with events spread across the whole window."""
+    """~1.5 years of trades with events spread across the whole window; as many lone-director
+    buys (no drift) as planted events, so the rules must pick the good events, not just any."""
     prices, insiders, flow = make_market(seed=seed, drift_after_signal=drift, n_days=500,
-                                         event_days=380, events_per_ticker=10)
+                                         event_days=380, events_per_ticker=10, noise_events_per_ticker=10)
     cfg = Config()
     panel = build_panel(prices, insiders, flow, cfg)
     return run_trades(panel, start=prices["SPY"].index[-400], cfg=cfg)
@@ -25,7 +26,7 @@ def _long_market(drift: float, seed: int = 7):
 # --- walk-forward -------------------------------------------------------------------------
 
 def test_walk_forward_recovers_planted_edge():
-    wf = walk_forward(_long_market(drift=0.004))
+    wf = walk_forward(_long_market(drift=0.006))
     s = wf["summary"]
     assert s["folds"] == 3 and s["trades"] > 50
     assert s["lift_r"] >= 0.1 and s["p"] < 0.05
@@ -77,7 +78,7 @@ def test_market_regimes_are_point_in_time():
 
 
 def test_regime_baseline_covers_every_closed_trade():
-    trades = _long_market(drift=0.004)
+    trades = _long_market(drift=0.006)
     base = regime_baseline(trades)
     closed = (trades["exit_reason"] != "open").sum()
     for _, g in base.groupby("dimension"):

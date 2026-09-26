@@ -45,6 +45,9 @@ class TradeParams:
     target_atr: float = 3.0             # profit target in ATRs (2R)
     max_hold_days: int = 15             # time stop
     min_price: float = 5.0              # skip signals on stocks below this (illiquid, few options)
+    # Only events (insider buy, unusual flow, 13D/13G) open trades; technical setups are context
+    # conditions of those events. True restores setups as triggers of their own.
+    setups_trigger: bool = False
     entry: str = "next_open"            # enter at next session's open to avoid look-ahead bias
 
 
