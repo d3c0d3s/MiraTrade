@@ -2,6 +2,7 @@ import gzip
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from miratrade.backtest import build_panel, conditions, entry_trigger
 from miratrade.cli import pipeline
@@ -159,3 +160,28 @@ def test_no_13d_edge_in_pure_noise(tmp_path):
     res = pipeline(prices, NO_INS, NO_FLOW, prices["SPY"].index[-220], tmp_path, ownership=ownership)
     rules = res["rules"]
     assert not (rules["validated"] & rules["rule"].str.contains("own:|event:13dg")).any()
+
+
+def test_dark_features_measure_the_off_exchange_share():
+    """FINRA's facilities report the off-exchange part; against consolidated volume that is the
+    share worked in the dark, and only its own history says whether a day is unusual."""
+    from miratrade.signals.smart_money import dark_features
+
+    dates = pd.bdate_range("2026-01-01", periods=30)
+    consolidated = pd.Series(1_000_000.0, index=dates)
+    off = [400_000.0] * 28 + [900_000.0, 50_000.0]          # a very dark day, then a very lit one
+    short = pd.DataFrame({"date": dates, "ticker": "ACME", "short_volume": 0.0, "total_volume": off})
+
+    f = dark_features(short, consolidated, "ACME")
+    assert f["dark_ratio"].iloc[0] == pytest.approx(0.40)
+    assert f["dark_high"].iloc[-2] == 1.0 and f["dark_low"].iloc[-2] == 0.0
+    assert f["dark_low"].iloc[-1] == 1.0 and f["dark_high"].iloc[-1] == 0.0
+    assert f["dark_high"].iloc[:20].sum() == 0                # a flat history flags nothing
+
+    assert dark_features(short, consolidated, "OTHER")["dark_ratio"].isna().all()
+    assert dark_features(pd.DataFrame(), consolidated, "ACME")["dark_ratio"].isna().all()
+
+    impossible = short.assign(total_volume=5_000_000.0)       # more off-exchange than total volume
+    assert dark_features(impossible, consolidated, "ACME")["dark_ratio"].isna().all()
+    zero = dark_features(short, pd.Series(0.0, index=dates), "ACME")
+    assert zero["dark_ratio"].isna().all() and zero["dark_high"].sum() == 0

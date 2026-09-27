@@ -200,3 +200,54 @@ def test_clean_insiders_drops_filing_errors():
     # SPGX is a four-letter stock, not a five-letter fund ticker.
     assert list(kept["ticker"]) == ["ACME", "BRK.A", "SPGX"]
     assert stats == {"placeholder_ticker": 1, "fund_ticker": 1, "total_as_price": 1}
+
+
+def test_sec_downloads_run_in_parallel_without_exceeding_the_budget(tmp_path):
+    """Several filings download at once, but the shared budget still sets the pace, and each
+    thread gets its own session because requests.Session is not thread-safe."""
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    from miratrade.data.sec import SecClient
+
+    c = SecClient(user_agent="t t@example.com", cache_dir=tmp_path, per_second=20)
+    gate, seen = threading.Barrier(3), []                  # one session per thread, never shared
+
+    def grab(_):
+        session = c.session
+        gate.wait(timeout=5)                               # hold all three threads at once
+        return session
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        seen = list(pool.map(grab, range(3)))
+    assert len({id(s) for s in seen}) == 3
+
+    latency, requests_made = 0.05, 12
+    in_flight, peak, lock = [0], [0], threading.Lock()
+
+    def slow_get(url, timeout):
+        with lock:
+            in_flight[0] += 1
+            peak[0] = max(peak[0], in_flight[0])
+        time.sleep(latency)                                # stand in for the network
+        with lock:
+            in_flight[0] -= 1
+        return _Resp(200, b"ok")
+
+    original = type(c)._new_session
+    type(c)._new_session = lambda self: type("S", (), {"get": staticmethod(slow_get), "headers": {}})()
+    try:
+        c._local = threading.local()                       # drop the real sessions
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            t0 = time.perf_counter()
+            list(pool.map(lambda i: c.get(f"https://www.sec.gov/f{i}", cache=False), range(requests_made)))
+            elapsed = time.perf_counter() - t0
+    finally:
+        type(c)._new_session = original
+
+    serial = requests_made * (latency + 1 / 20)            # what one-at-a-time would cost
+    floor = (requests_made - 1) / 20                       # what the shared budget alone costs
+    assert peak[0] > 1                                     # genuinely concurrent
+    assert elapsed < serial * 0.8                          # faster than one at a time
+    assert elapsed >= floor * 0.8                          # and never faster than the budget allows

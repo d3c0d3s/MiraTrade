@@ -16,7 +16,7 @@ from miratrade.options_trades import realized_vol, simulate_option
 from miratrade.regimes import market_regimes
 from miratrade.signals.insider import insider_features
 from miratrade.signals.options_flow import flow_features, unusual_prints
-from miratrade.signals.smart_money import ownership_features, short_features
+from miratrade.signals.smart_money import dark_features, ownership_features, short_features
 from miratrade.signals.technical import SETUPS, detect_setups, indicators
 from miratrade.survivorship import delisted_tickers
 
@@ -47,6 +47,7 @@ def build_panel(prices: dict[str, pd.DataFrame], insiders: pd.DataFrame, flow: p
         ind = ind.join(flow_features(unusual, ind.index, t, cfg.flow))
         ind = ind.join(ownership_features(ownership, ind.index, t, cfg.smart))
         ind = ind.join(short_features(short_volume, ind.index, t, cfg.smart))
+        ind = ind.join(dark_features(short_volume, ind["volume"], t, cfg.smart))
         ind["mkt_cap"] = market_cap(ind.index, ind["close"], shares, t)
         if mkt is not None:
             ind = ind.join(mkt).fillna({"mkt_up": 0.0, "mkt_trend": "unknown", "mkt_vol": "unknown"})
@@ -114,6 +115,8 @@ def conditions(row: pd.Series) -> dict[str, bool]:
     c["own:13g_active"] = row.get("own_13g", 0) > 0
     c["short:low"] = bool(row.get("short_low", 0))
     c["short:high"] = bool(row.get("short_high", 0))
+    c["dark:high"] = bool(row.get("dark_high", 0))       # unusual size worked off-exchange
+    c["dark:low"] = bool(row.get("dark_low", 0))
     c["trend:up"] = row["close"] > row["sma50"] and row["sma20"] > row["sma50"]
     c["trend:above_200"] = bool(row["close"] > row["sma200"]) if np.isfinite(row["sma200"]) else False
     c["mom:ret20>0"] = row["ret_20d"] > 0

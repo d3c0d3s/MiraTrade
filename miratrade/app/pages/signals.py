@@ -25,7 +25,9 @@ CONTEXT_LABELS = {"trend:up": "Tendencia al alza (sobre sus medias de 20 y 50)",
                   "mom:ret20>0": "Sube en las últimas 20 sesiones", "rsi:<40": "RSI bajo (menos de 40)",
                   "rsi:>60": "RSI alto (más de 60)", "vol:rel>1.5": "Volumen 1,5 veces el normal",
                   "mkt:spy_above_50d": "Mercado (SPY) sobre su media de 50", "short:low": "Poca venta en corto",
-                  "short:high": "Mucha venta en corto"}
+                  "short:high": "Mucha venta en corto",
+                  "dark:high": "Volumen fuera de bolsa inusualmente alto (dark pool)",
+                  "dark:low": "Volumen fuera de bolsa inusualmente bajo"}
 DISCLAIMER = "Análisis, no asesoramiento. Con opciones puedes perder la prima entera."
 ITEM_PADDING = 10          # keep in sync with theme.QSS: QListWidget::item padding
 SELECTED_BORDER = 1        # …and the border it gains when selected

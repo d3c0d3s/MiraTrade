@@ -57,6 +57,10 @@ class SmartMoneyParams:
     short_window: int = 20              # short-volume ratio z-score against this many sessions
     short_min_periods: int = 10
     short_z: float = 1.0                # |z| at or above this counts as unusually low / high shorting
+    # Off-exchange (dark pool / ATS / wholesaler) share of the day's volume, same idea.
+    dark_window: int = 20
+    dark_min_periods: int = 10
+    dark_z: float = 1.0
 
 
 @dataclass

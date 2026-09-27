@@ -13,9 +13,11 @@ from __future__ import annotations
 import io
 import os
 import re
+import threading
 import time
 import zipfile
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import date, timedelta
 from pathlib import Path
@@ -40,6 +42,7 @@ SERVER_ERRORS = {500, 502, 503, 504}
 # counting every process. MiraTrade stays under that with one budget shared by all its processes.
 SEC_RATE_PER_S = 8.0
 SEC_BLOCK_WAIT_S = 600.0            # after a 429 the SEC throttles the address for about ten minutes
+PARALLEL_FILINGS = 6                # downloads in flight; the shared budget still caps the rate
 
 
 if os.name == "nt":
@@ -130,15 +133,30 @@ class SecClient:
     def __init__(self, user_agent: str = SEC_USER_AGENT, cache_dir: Path = CACHE_DIR / "sec",
                  retries: int = 4, backoff: float = 2.0, block_wait: float = SEC_BLOCK_WAIT_S,
                  per_second: float = SEC_RATE_PER_S):
-        import requests
-
-        self.session = requests.Session()
-        self.session.headers["User-Agent"] = user_agent
-        self.session.headers["Accept-Encoding"] = "gzip, deflate"
+        self.user_agent = user_agent
+        self._local = threading.local()
+        self._local.session = self._new_session()
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.retries, self.backoff, self.block_wait = retries, backoff, block_wait
         self.rate = SharedRate(self.cache_dir / ".sec_rate", per_second)
+
+    def _new_session(self):
+        import requests
+
+        s = requests.Session()
+        s.headers["User-Agent"] = self.user_agent
+        s.headers["Accept-Encoding"] = "gzip, deflate"
+        return s
+
+    @property
+    def session(self):
+        """One session per thread: several downloads may be in flight at once, and the shared
+        budget — not the number of threads — is what keeps the rate under the SEC's limit."""
+        s = getattr(self._local, "session", None)
+        if s is None:
+            s = self._local.session = self._new_session()
+        return s
 
     def _throttled_get(self, url: str):
         self.rate.wait_turn()
@@ -337,12 +355,19 @@ def fetch_insiders(start: date, end: date, client: SecClient | None = None,
                 continue
             filings = parse_daily_index(idx.decode("latin-1"))
             print(f"  {day}: {len(filings)} Form 4 filings", flush=True)
-            for path, filed in filings:
+            def download(item):
+                path, filed = item
                 try:
-                    raw = client.get(ARCHIVE_URL.format(path=path))
-                except Exception as e:  # one filing still failing after retries must not kill the run
+                    return path, filed, client.get(ARCHIVE_URL.format(path=path))
+                except Exception as e:      # one filing must not kill the run; reported below
+                    return path, filed, e
+
+            with ThreadPoolExecutor(max_workers=PARALLEL_FILINGS) as pool:
+                fetched = list(pool.map(download, filings))
+            for path, filed, raw in fetched:
+                if isinstance(raw, Exception):
                     failed += 1
-                    print(f"    skipped {path}: {e}", flush=True)
+                    print(f"    skipped {path}: {raw}", flush=True)
                     continue
                 if raw is None:
                     continue

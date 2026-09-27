@@ -13,6 +13,8 @@ from miratrade.config import SmartMoneyParams
 
 OWNERSHIP_FEATURES = ["own_13d", "own_13g", "own_fresh"]
 SHORT_FEATURES = ["short_ratio", "short_z", "short_low", "short_high"]
+DARK_FEATURES = ["dark_ratio", "dark_z", "dark_low", "dark_high"]
+MAX_SANE_DARK_RATIO = 1.2       # above this the two volume sources disagree (splits, adjustments)
 
 
 def _window_counts(filed: np.ndarray, d: np.ndarray, window: np.timedelta64) -> np.ndarray:
@@ -72,4 +74,36 @@ def short_features(short_volume: pd.DataFrame, dates: pd.DatetimeIndex, ticker: 
     out["short_z"] = z.reindex(dates)
     out["short_low"] = (out["short_z"] <= -p.short_z).astype(float)
     out["short_high"] = (out["short_z"] >= p.short_z).astype(float)
+    return out
+
+
+def dark_features(short_volume: pd.DataFrame, volume: pd.Series, ticker: str,
+                  p: SmartMoneyParams = SmartMoneyParams()) -> pd.DataFrame:
+    """Share of the day's volume executed **off-exchange** — dark pools, ATS and wholesalers —
+    with its z-score against the ticker's own recent sessions.
+
+    FINRA's daily Reg SHO file reports the volume its facilities handled, which is the off-exchange
+    part; ``volume`` is the consolidated volume from the price bars. Their ratio normally sits
+    around 35–60 %. A jump means size was worked away from the lit market that day, which is the
+    footprint institutions leave. Like the short ratio, it is only comparable with the ticker's own
+    history, never across tickers.
+    """
+    dates = volume.index
+    out = pd.DataFrame({"dark_ratio": np.nan, "dark_z": np.nan, "dark_low": 0.0, "dark_high": 0.0},
+                       index=dates)
+    if short_volume is None or short_volume.empty:
+        return out
+    s = short_volume[short_volume["ticker"] == ticker]
+    if s.empty:
+        return out
+    off = s.groupby("date")["total_volume"].sum().sort_index().reindex(dates)
+    consolidated = pd.to_numeric(volume, errors="coerce")
+    ratio = off / consolidated.where(consolidated > 0)
+    ratio = ratio.where((ratio > 0) & (ratio <= MAX_SANE_DARK_RATIO))
+    mean = ratio.rolling(p.dark_window, min_periods=p.dark_min_periods).mean()
+    sd = ratio.rolling(p.dark_window, min_periods=p.dark_min_periods).std()
+    out["dark_ratio"] = ratio
+    out["dark_z"] = (ratio - mean) / sd.where(sd > 0)
+    out["dark_low"] = (out["dark_z"] <= -p.dark_z).astype(float)
+    out["dark_high"] = (out["dark_z"] >= p.dark_z).astype(float)
     return out
