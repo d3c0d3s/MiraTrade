@@ -79,7 +79,8 @@ def window(qtbot, tmp_path):
 
     auth = SchwabAuth(CredentialStore(backend=MemoryKeyring()))
     w = MainWindow(reports_dir=tmp_path / "reports", settings_path=tmp_path / "settings.json", auth=auth,
-                   scan_dir=tmp_path / "scan", etrade_auth=EtradeAuth(CredentialStore(backend=MemoryKeyring())))
+                   scan_dir=tmp_path / "scan", etrade_auth=EtradeAuth(CredentialStore(backend=MemoryKeyring())),
+                   practice_path=tmp_path / "practice.json")
     qtbot.addWidget(w)
     return w
 
@@ -380,3 +381,112 @@ def test_window_and_size_filter_without_searching_again(qtbot, tmp_path):
     page.cap.setCurrentIndex(page.cap.findData("all"))
     page.days.setValue(60)
     assert len(listed()) == 3 and started == []              # never searched again
+
+
+def test_automatic_refresh_respects_the_floor_and_never_overlaps(window, monkeypatch):
+    """A timer may repeat the download, but not faster than the floor, not while one is running,
+    and not when there is nowhere to get prices from."""
+    from miratrade.config import MIN_AUTO_REFRESH_MINUTES
+
+    s = window.settings
+    sig = window.signals
+    assert not sig.auto.isActive()                              # off by default
+
+    started = []
+    monkeypatch.setattr(sig, "start_scan", lambda: started.append(1))
+
+    s.auto_refresh.setValue(MIN_AUTO_REFRESH_MINUTES - 1)       # below the floor: stays off
+    s.save()
+    assert not sig.auto.isActive()
+
+    s.auto_refresh.setValue(15)
+    s.save()
+    assert sig.auto.isActive() and sig.auto.interval() == 15 * 60_000
+    assert "automático cada 15 min" in sig.scan_btn.text()
+
+    sig.scan_btn.setEnabled(True)
+    sig._tick()
+    assert started == [1]
+
+    sig.proc = object()                                         # a download already running
+    sig._tick()
+    assert started == [1]
+    sig.proc = None
+
+    sig.scan_btn.setEnabled(False)                              # no price source
+    sig._tick()
+    assert started == [1]
+
+    s.auto_refresh.setValue(0)
+    s.save()
+    assert not sig.auto.isActive() and sig.scan_btn.text() == "Actualizar datos"
+
+
+def test_download_window_is_a_setting(window):
+    s = window.settings
+    s.scan_days.setValue(45)
+    s.save()
+    assert json.loads(s.settings_path.read_text(encoding="utf-8"))["data"]["scan_days"] == 45
+
+
+def test_adding_an_event_to_practice_and_seeing_it_there(window, monkeypatch, tmp_path):
+    """The two screens are one flow: the contract on Señales becomes a paper position on Práctica."""
+    from PySide6.QtWidgets import QMessageBox
+
+    from miratrade.practice import PRACTICE_PATH
+
+    monkeypatch.setattr("miratrade.practice.PRACTICE_PATH", tmp_path / "practice.json")
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: QMessageBox.Ok)
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.Ok)
+    sig, prac = window.signals, window.practice
+    prac.path = tmp_path / "practice.json"
+
+    sig._contract = None                                        # nothing chosen yet
+    sig.add_to_practice()
+    assert prac.trades == []
+
+    sig._contract = {"premium": 4.0, "stop": 3.0, "target": 5.6, "strike": 50.0,
+                     "expiry": pd.Timestamp("2026-11-20"), "iv": 0.4}
+    item = type("Item", (), {"data": staticmethod(lambda role: {"ticker": "ACME", "what": "3 directivos"})})()
+    monkeypatch.setattr(sig.list, "currentItem", lambda: item)
+    sig.add_to_practice()
+
+    prac.reload()
+    assert len(prac.trades) == 1
+    t = prac.trades[0]
+    assert t.ticker == "ACME" and t.kind == "call" and t.quantity >= 1 and t.note == "3 directivos"
+    assert prac.open_table.rowCount() == 1 and prac.done_table.rowCount() == 0
+    assert "ACME 50 C" in prac.open_table.item(0, 0).text()
+    assert prac.empty.isHidden()
+
+    sig.add_to_practice()                                       # the same ticker twice is refused
+    prac.reload()
+    assert len(prac.trades) == 1
+
+
+def test_practice_marks_and_closes_from_the_saved_prices(window, monkeypatch, tmp_path):
+    from PySide6.QtWidgets import QMessageBox
+
+    from miratrade.practice import open_trade, save
+
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: QMessageBox.Ok)
+    prac = window.practice
+    prac.path = tmp_path / "practice.json"
+    trades = []
+    open_trade(trades, ticker="ACME", kind="call", entry=4.0, stop=3.0, target=5.6, equity=25_000.0,
+               strike=50.0, expiry="2026-11-20", iv=0.4)
+    save(trades, prac.path)
+    prac.reload()
+
+    monkeypatch.setattr(prac, "latest_prices", lambda: {"ACME": 80.0})   # deep in the money
+    prac.mark_now()
+    assert prac.trades[0].status == "cerrada" and prac.trades[0].exit_reason == "target"
+    assert prac.done_table.rowCount() == 1 and prac.open_table.rowCount() == 0
+    assert "objetivo" in prac.done_table.item(0, 6).text()
+    assert len(load_practice(prac.path)) == 1                   # and it was written to disk
+
+
+def load_practice(path):
+    from miratrade.practice import load
+
+    return load(path)

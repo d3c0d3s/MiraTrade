@@ -170,6 +170,8 @@ class BrokerParams:
 
 # Company size bands (US convention). Picking one shrinks the universe *before* prices are
 # downloaded and simulated, which is where the time goes; it does not make the edge better.
+MIN_AUTO_REFRESH_MINUTES = 5
+
 CAP_TIERS: dict[str, tuple[float | None, float | None, str]] = {
     "all": (None, None, "Todas"),
     "mega": (200e9, None, "Mega · 200.000 M$ o más"),
@@ -190,6 +192,10 @@ class DataParams:
     cap_tier: str = "all"               # company size to keep, a key of CAP_TIERS
     scan_days: int = 30                 # days one "Actualizar datos" downloads; the screen
                                         # filters inside that, without fetching again
+    # Repeat the download by itself every N minutes (0 = only when you press the button). Each
+    # refresh re-reads today's filings, so anything shorter than MIN_AUTO_REFRESH_MINUTES would
+    # spend more time asking the SEC than there is new information to find.
+    auto_refresh_minutes: int = 0
     # "research" = public web sources (Yahoo via yfinance, Stooq, CBOE's page). Their terms allow
     # personal, non-commercial use at most: off by default, never the default of a shipped app.
 

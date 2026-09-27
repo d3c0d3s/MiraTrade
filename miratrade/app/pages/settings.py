@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, 
                                QSpinBox, QVBoxLayout, QWidget)
 
 from miratrade.app import data
+from miratrade.config import MIN_AUTO_REFRESH_MINUTES
 from miratrade.app.widgets import card, muted
 
 
@@ -90,14 +91,30 @@ class SettingsPage(QWidget):
         self.quote_broker.setAccessibleName("Bróker para cotizaciones y cadenas de opciones")
         self.source_note = muted("")
         self.price_source.currentIndexChanged.connect(self._source_changed)
+        self.scan_days = QSpinBox()
+        self.scan_days.setRange(1, 365)
+        self.scan_days.setSuffix(" días")
+        self.scan_days.setValue(self.cfg.data.scan_days)
+        self.scan_days.setAccessibleName("Días que descarga cada actualización")
+        self.auto_refresh = QSpinBox()
+        self.auto_refresh.setRange(0, 720)
+        self.auto_refresh.setSpecialValueText("Solo cuando yo lo pida")
+        self.auto_refresh.setSuffix(" min")
+        self.auto_refresh.setValue(self.cfg.data.auto_refresh_minutes)
+        self.auto_refresh.setAccessibleName("Actualizar automáticamente cada X minutos")
         src_form = QFormLayout()
         src_form.addRow("Historial de precios", self.price_source)
         src_form.addRow("Cotizaciones y opciones", self.quote_broker)
+        src_form.addRow("Cada descarga trae", self.scan_days)
+        src_form.addRow("Actualizar solo", self.auto_refresh)
         src_w = QWidget()
         src_w.setLayout(src_form)
         market = card(src_w, self.source_note,
                       muted("Cada usuario conecta su propia cuenta; MiraTrade no comparte tus datos con nadie. "
                             "E*TRADE no ofrece historial de precios: el historial viene de Schwab."),
+                      muted(f"La actualización automática solo baja lo nuevo, pero vuelve a leer los formularios "
+                            f"de hoy en cada pasada. Por debajo de {MIN_AUTO_REFRESH_MINUTES} minutos se queda "
+                            "apagada: pedirías a la SEC más de lo que cambia."),
                       title="Datos de mercado")
         self._source_changed()
 
@@ -379,6 +396,8 @@ class SettingsPage(QWidget):
                 self.price_source.setCurrentIndex(self.price_source.findData(self.cfg.data.price_source))
         self.cfg.data.price_source = self.price_source.currentData()
         self.cfg.data.quote_broker = self.quote_broker.currentData()
+        self.cfg.data.scan_days = self.scan_days.value()
+        self.cfg.data.auto_refresh_minutes = self.auto_refresh.value()
         if r.risk_per_trade_pct > r.risk_warn_pct:
             QMessageBox.warning(self, "Riesgo", "El riesgo por operación no puede superar el techo.")
             return

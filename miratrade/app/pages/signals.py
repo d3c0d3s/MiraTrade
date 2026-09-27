@@ -6,16 +6,17 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-from PySide6.QtCore import QProcess, QSize, Qt, Signal
+from PySide6.QtCore import QProcess, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget,
+                               QMessageBox,
                                QListWidgetItem,
                                QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QVBoxLayout, QWidget)
 
 from miratrade.app import data, theme
 from miratrade.app.chart import CandleChart
 from miratrade.app.widgets import ShapeIcon, es_date, es_num, muted
-from miratrade.config import Config
+from miratrade.config import MIN_AUTO_REFRESH_MINUTES, Config
 from miratrade.outcomes import EVENT_TYPES, variants
 from miratrade.scan import (CONDITION_LABELS, DEFAULT_VARIANT, EVENT_LABELS, contract_for, covered_days,
                             evidence, filter_events, latest_history_report, load_history, load_scan,
@@ -179,6 +180,7 @@ class OutcomeBar(QWidget):
 class SignalsPage(QWidget):
     open_settings = Signal()
     use_research = Signal()
+    practice_added = Signal()
 
     def __init__(self, reports_dir: Path | None = None, scan_dir: Path | None = None, cfg: Config = Config(),
                  settings_path: Path | None = None):
@@ -190,6 +192,9 @@ class SignalsPage(QWidget):
         self.settings_path = Path(settings_path or data.SETTINGS_PATH)
         self.proc: QProcess | None = None
         self.scan: dict | None = None
+        self._contract: dict | None = None
+        self.auto = QTimer(self)                 # repeats the download on its own; see _tick
+        self.auto.timeout.connect(self._tick)
         self.history = self.rules = pd.DataFrame()
         self.report: Path | None = None
 
@@ -324,9 +329,9 @@ class SignalsPage(QWidget):
         self.preview_btn = QPushButton("Vista previa en Schwab")
         self.preview_btn.setObjectName("primary")
         self.practice_btn = QPushButton("Añadir a práctica")
-        for btn in (self.preview_btn, self.practice_btn):
-            btn.setEnabled(False)
-            btn.setToolTip("Llega en el siguiente paso: elegir el contrato y abrir la vista previa o la práctica.")
+        self.practice_btn.clicked.connect(self.add_to_practice)
+        self.preview_btn.setEnabled(False)
+        self.preview_btn.setToolTip("Necesita una sesión de Schwab activa: la vista previa la da el bróker.")
         for w in (_label("OPERACIÓN DE REFERENCIA", "label"), self.profile, self.contract, box, self.similar,
                   _label("REGLAS VALIDADAS", "label"), self.rules_text, _label("CONTEXTO (NO DISPARA SEÑALES)", "label"),
                   self.context):
@@ -383,6 +388,22 @@ class SignalsPage(QWidget):
             self.cap.setCurrentIndex(max(0, self.cap.findData(tier)))
             self.cap.blockSignals(False)
 
+    def _tick(self) -> None:
+        """One turn of the automatic refresh. It only ever starts a download when the last one has
+        finished and there is somewhere to get prices from, so a slow scan or a disconnected broker
+        cannot pile runs on top of each other."""
+        if self.proc is None and self.scan_btn.isEnabled():
+            self.start_scan()
+
+    def refresh_auto(self) -> None:
+        """Start, restart or stop the automatic refresh from the saved settings."""
+        minutes = data.read_settings(self.settings_path).data.auto_refresh_minutes
+        if minutes and minutes >= MIN_AUTO_REFRESH_MINUTES:
+            self.auto.start(int(minutes) * 60_000)
+        else:
+            self.auto.stop()
+        self.refresh_source()
+
     def refresh_source(self) -> None:
         """Whether a scan could get prices right now (checked without downloading anything)."""
         from miratrade.data.prices import source_ready
@@ -393,12 +414,15 @@ class SignalsPage(QWidget):
         except Exception as e:
             ok, why = False, f"No se pudo comprobar la fuente de precios: {e}"
         self.banner.setVisible(not ok)
+        minutes = data.read_settings(self.settings_path).data.auto_refresh_minutes
+        self.scan_btn.setText("Actualizar datos" if not self.auto.isActive()
+                              else f"Actualizar datos · automático cada {minutes} min")
         self.source_msg.setText(why + " Sin precios, la búsqueda no puede empezar.")
         self.scan_btn.setEnabled(ok and self.proc is None)
         self.scan_btn.setToolTip("" if ok else why)
 
     def refresh(self) -> None:
-        self.refresh_source()
+        self.refresh_auto()
         self.report = latest_history_report(self.reports_dir)
         self.history, self.rules = load_history(self.report) if self.report else (pd.DataFrame(), pd.DataFrame())
         self.scan = load_scan(self.scan_dir)
@@ -509,6 +533,8 @@ class SignalsPage(QWidget):
         v = self.variant.currentData()
         self.profile.setText(variant_label(v, self.cfg))
         if item is None:
+            self._contract = None
+            self.practice_btn.setEnabled(False)
             self.contract.set_contract("", None, "Elige un evento.")
             for w in (self.ticker, self.price, self.change, self.evidence_text, self.legend, self.similar,
                       self.rules_text, self.context):
@@ -527,6 +553,8 @@ class SignalsPage(QWidget):
             self.change.setText(f"{es_num(ch * 100, 1, sign=True)} %")
             self.change.setStyleSheet(f"color: {theme.UP if ch >= 0 else theme.DOWN}")
         contract = contract_for(prices, ev["signal_date"], v, self.cfg) if len(prices) else None
+        self._contract = contract
+        self.practice_btn.setEnabled(contract is not None)
         self.contract.set_contract(t, contract, "" if v.startswith("call") else
                                    "Este perfil compra la acción, no una opción.")
         kind = next((k for k in EVENT_TYPES if ev.get(k)), "event:insider_buy")
@@ -546,6 +574,36 @@ class SignalsPage(QWidget):
                                 "Trata la evidencia como historial, no como predicción.")
         ctx = [label for c, label in CONTEXT_LABELS.items() if ev.get(c) is True or ev.get(c) == 1]
         self.context.setText("\n".join(f"• {c}" for c in ctx) or "Nada destacable.")
+
+    def add_to_practice(self) -> None:
+        """Open the contract on screen as a paper position, sized by the risk settings."""
+        from miratrade.practice import PRACTICE_PATH, load, open_trade, save
+        from miratrade.app.pages.practice import START_EQUITY
+
+        item = self.list.currentItem()
+        contract = self._contract
+        if item is None or contract is None:
+            QMessageBox.information(self, "Práctica", "Elige un evento con contrato para añadirlo.")
+            return
+        ev = item.data(Qt.UserRole)
+        trades = load(PRACTICE_PATH)
+        cfg = data.read_settings(self.settings_path)
+        try:
+            trade = open_trade(
+                trades, ticker=ev["ticker"], kind="call", entry=contract["premium"],
+                stop=contract["stop"], target=contract["target"],
+                equity=START_EQUITY, note=str(ev.get("what", ""))[:120],
+                strike=contract["strike"], expiry=str(contract["expiry"].date()), iv=contract["iv"], cfg=cfg)
+        except ValueError as e:
+            QMessageBox.warning(self, "Práctica", str(e))
+            return
+        save(trades, PRACTICE_PATH)
+        self.practice_added.emit()
+        QMessageBox.information(
+            self, "Práctica",
+            f"Añadida: {trade.quantity} × {trade.label()}\n\n"
+            f"Coste {trade.cost:,.0f} $ · riesgo hasta el stop {trade.risk:,.0f} $.\n"
+            "Sin dinero real; la verás en la pantalla Práctica.")
 
     # ------------------------------------------------------------------ running a scan
 

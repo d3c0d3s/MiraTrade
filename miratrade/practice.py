@@ -174,13 +174,10 @@ def mark(trades: list[PaperTrade], prices: dict[str, float], on: date | None = N
         if value is None:
             continue
         t.last = float(value)
-        reason = None
-        if t.last <= t.stop:
-            reason = "stop"
-        elif t.last >= t.target:
-            reason = "target"
-        elif t.kind == "call" and t.expiry and date.fromisoformat(t.expiry) <= on:
-            reason = "expiry"
+        # On expiry day the contract is worth whatever it is worth and nothing is held further,
+        # so that is the reason it ended, whichever level the value happens to be at.
+        expired = t.kind == "call" and t.expiry and date.fromisoformat(t.expiry) <= on
+        reason = "expiry" if expired else "stop" if t.last <= t.stop else "target" if t.last >= t.target else None
         if reason:
             close_trade(t, t.last, reason, on)
             closed.append(t)
