@@ -128,10 +128,25 @@ own** personal developer keys, and data is never shared between users.
 
 - **Schwab**: individual developer access covers your own accounts. Offering MiraTrade to other
   Schwab clients requires Schwab's commercial approval first.
-- **E*TRADE**: an individual consumer key is for your own accounts ("non-commercial use"); sign the
-  market data agreement for real-time quotes (otherwise they are delayed; `miratrade etrade
-  diagnose` says which). The API has no price history, and MiraTrade connects it read-only: orders
-  go only through Schwab and the order guard. `pip install -e ".[etrade]"`.
+- **E*TRADE** (API Developer License Agreement, read 2026-09-27 — not legal advice):
+  - An **Individual Use Key** covers *your own* accounts only, and you warrant you are the sole
+    owner of the developer account (§1.12, §7.1c). Offering MiraTrade to other people needs a
+    **Vendor Use Key**, a written acknowledgement from every user kept for five years (§4.5), and
+    each of them must have their own E*TRADE account.
+  - **Their data stays theirs.** Everything read from their servers is E*TRADE's property and is
+    treated as their Confidential Information (§2.1). Passing market data to third parties, or
+    displaying it electronically to them, is prohibited without written approval (§2.3, §3.1). So
+    snapshots taken here are for the account holder's own analysis: never pooled between users,
+    never shipped as a dataset.
+  - **You owe any exchange fees** for the market data you pull (§3.1). Using it for a business can
+    reclassify you as a professional subscriber, which is not free.
+  - The key dies on its own if you skip the **annual attestation**, stop being a customer, or leave
+    it unused (§9.1), and E*TRADE can change the agreement without notice (§11.8).
+  - Sign the market data agreement for real-time quotes; otherwise they are delayed and
+    `miratrade etrade diagnose` says which. The API has no price history, and MiraTrade connects
+    it read-only: orders go only through Schwab and the order guard. `pip install -e ".[etrade]"`.
+  - The **sandbox returns canned data**, not the market. Use it to check the code, never to collect
+    history.
 - **Research sources** allow personal, non-commercial use at most. They have their own cache
   folder and must never feed anything that is shared or sold.
 
