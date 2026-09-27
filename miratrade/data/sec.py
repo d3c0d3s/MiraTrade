@@ -324,12 +324,39 @@ def parse_daily_index(text: str) -> list[tuple[str, str]]:
 
 # --------------------------------------------------------------------------- orchestration
 
+def _day_cache(cache_dir: Path, day: date) -> Path:
+    return Path(cache_dir) / "parsed" / f"form4_{day:%Y%m%d}.pkl"
+
+
+def read_parsed_day(path: Path) -> pd.DataFrame | None:
+    """A finished day's parsed rows, exactly as parsing produced them. Text formats round floats
+    and change dtypes, which would make two runs on the same filings disagree, so the table is
+    stored as-is. Anything unreadable (half-written, another pandas) gives ``None`` and the day is
+    parsed again."""
+    try:
+        df = pd.read_pickle(path)
+    except Exception:
+        return None
+    return df if isinstance(df, pd.DataFrame) and list(df.columns) == INSIDER_COLUMNS else None
+
+
+def write_parsed_day(df: pd.DataFrame, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    df.reindex(columns=INSIDER_COLUMNS).to_pickle(tmp)
+    tmp.replace(path)
+
+
 def fetch_insiders(start: date, end: date, client: SecClient | None = None,
-                   codes: tuple[str, ...] = ("P", "S")) -> pd.DataFrame:
-    """All open-market insider buys/sells filed between ``start`` and ``end`` (inclusive)."""
+                   codes: tuple[str, ...] = ("P", "S"), today: date | None = None) -> pd.DataFrame:
+    """All open-market insider buys/sells filed between ``start`` and ``end`` (inclusive).
+
+    Raw filings are cached, but rebuilding a table from each of a thousand XMLs a day is what
+    actually costs the time. A day that is over cannot gain filings, so its parsed rows are cached
+    too and later runs just read them. ``today`` says which day and quarter are still open."""
     client = client or SecClient()
     frames = []
-    today = date.today()
+    today = today or date.today()
     current_q = (today.year, (today.month - 1) // 3 + 1)
 
     quarters = sorted({(d.year, (d.month - 1) // 3 + 1)
@@ -349,12 +376,20 @@ def fetch_insiders(start: date, end: date, client: SecClient | None = None,
         q_start = max(start, date(year, 3 * q - 2, 1))
         q_end = min(end, (date(year + (q == 4), 1 if q == 4 else 3 * q + 1, 1) - timedelta(days=1)))
         for day in pd.bdate_range(q_start, q_end).date:
+            finished = day < today
+            day_cache = _day_cache(client.cache_dir, day)
+            cached_rows = read_parsed_day(day_cache) if finished and day_cache.exists() else None
+            if cached_rows is not None:
+                if len(cached_rows):
+                    frames.append(cached_rows)
+                continue
             idx = client.get(DAILY_INDEX_URL.format(year=year, q=q, ymd=day.strftime("%Y%m%d")),
                              missing=(403, 404))
             if idx is None:
                 continue
             filings = parse_daily_index(idx.decode("latin-1"))
             print(f"  {day}: {len(filings)} Form 4 filings", flush=True)
+            day_frames = []
             def download(item):
                 path, filed = item
                 try:
@@ -375,11 +410,17 @@ def fetch_insiders(start: date, end: date, client: SecClient | None = None,
                 if not m:
                     continue
                 try:
-                    frames.append(parse_form4_xml(m.group(0).decode("utf-8", "replace"),
-                                                  accession=Path(path).stem,
-                                                  filing_date=filed))
+                    day_frames.append(parse_form4_xml(m.group(0).decode("utf-8", "replace"),
+                                                      accession=Path(path).stem,
+                                                      filing_date=filed))
                 except ET.ParseError:
                     continue
+            day_rows = (pd.concat(day_frames, ignore_index=True) if day_frames
+                        else pd.DataFrame(columns=INSIDER_COLUMNS))
+            if finished:
+                write_parsed_day(day_rows, day_cache)
+            if len(day_rows):
+                frames.append(day_rows)
 
     if failed:
         print(f"  {failed} Form 4 filings could not be downloaded and were skipped; "

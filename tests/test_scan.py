@@ -154,3 +154,36 @@ def test_scan_explains_that_it_downloads_before_the_window(monkeypatch):
     assert asked["insiders"][0] == since - timedelta(days=look)      # the extra history is fetched
     said = " ".join(lines)
     assert str(since) in said and str(since - timedelta(days=look)) in said and "sigue contando" in said
+
+
+def _events(rows):
+    return pd.DataFrame(rows)
+
+
+def test_filters_are_views_over_what_was_already_downloaded():
+    """Changing the window, the size or the kind of event must not mean searching again."""
+    from miratrade.scan import covered_days, filter_events
+
+    base = pd.Timestamp("2026-09-25")
+    events = _events([
+        {"ticker": "BIG", "signal_date": base, "mkt_cap": 50e9,
+         "event:insider_buy": True, "event:13dg": False, "event:flow": False},
+        {"ticker": "MID", "signal_date": base - pd.Timedelta(days=3), "mkt_cap": 5e9,
+         "event:insider_buy": False, "event:13dg": True, "event:flow": False},
+        {"ticker": "OLD", "signal_date": base - pd.Timedelta(days=20), "mkt_cap": 5e9,
+         "event:insider_buy": True, "event:13dg": False, "event:flow": False},
+        {"ticker": "NOCAP", "signal_date": base, "mkt_cap": float("nan"),
+         "event:insider_buy": True, "event:13dg": False, "event:flow": False}])
+
+    assert len(filter_events(events)) == 4
+    assert set(filter_events(events, days=7)["ticker"]) == {"BIG", "MID", "NOCAP"}
+    assert set(filter_events(events, cap_tier="large")["ticker"]) == {"BIG"}
+    assert set(filter_events(events, cap_tier="mid")["ticker"]) == {"MID", "OLD"}
+    assert set(filter_events(events, days=7, cap_tier="mid")["ticker"]) == {"MID"}
+    assert set(filter_events(events, kinds=("event:13dg",))["ticker"]) == {"MID"}
+    assert filter_events(events, cap_tier="micro").empty          # unknown size is not micro
+    assert filter_events(pd.DataFrame()).empty
+
+    from datetime import date
+    assert covered_days({"since": date(2026, 9, 1), "end": date(2026, 9, 26)}) == 25
+    assert covered_days(None) == 0 and covered_days({"since": None, "end": None}) == 0

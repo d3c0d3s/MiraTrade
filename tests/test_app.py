@@ -163,7 +163,8 @@ def test_signals_page_shows_events_with_evidence(qtbot, tmp_path):
                   "ins:exec_buy": [True] * 40, "res_call45_40": [1.0, -1.0] * 20,
                   "ret_call45_40": [0.4, -0.25] * 20}).to_csv(rep / "events.csv", index=False)
 
-    page = SignalsPage(tmp_path / "reports", tmp_path / "scan")
+    (tmp_path / "settings.json").write_text(json.dumps({"data": {"price_source": "research"}}), encoding="utf-8")
+    page = SignalsPage(tmp_path / "reports", tmp_path / "scan", settings_path=tmp_path / "settings.json")
     qtbot.addWidget(page)
     assert page.list.count() == 2 and page.empty.isHidden()
     assert page.ticker.text() == "ACME" and page.price.text() == "10,20 $"
@@ -337,3 +338,45 @@ def test_contract_card_shows_the_modelled_call(qtbot, tmp_path):
     page.variant.setCurrentIndex(page.variant.findData("stock12m_30"))   # shares: no contract
     assert card.head.text() == "Sin contrato" and "acción" in card.sub.text()
     assert card.values["premium"].text() == "–"
+
+
+def test_window_and_size_filter_without_searching_again(qtbot, tmp_path):
+    """Changing the days or the size must rearrange what is on screen, never start a download."""
+    from miratrade.app.pages.signals import SignalsPage
+    from miratrade.scan import save_scan
+
+    idx = pd.bdate_range("2026-01-01", periods=120)
+    close = pd.Series(10 * (1.002 ** np.arange(120)) * (1 + 0.02 * np.sin(np.arange(120))), index=idx)
+    bars = pd.DataFrame({"open": close, "high": close * 1.01, "low": close * 0.99, "close": close,
+                         "volume": 1e6}, index=idx)
+    events = pd.DataFrame([
+        {"ticker": "BIG", "signal_date": idx[-2], "close": 10.0, "mkt_cap": 500e9, "what": "hoy, gigante",
+         "event:insider_buy": True, "event:flow": False, "event:13dg": False},
+        {"ticker": "SML", "signal_date": idx[-2], "close": 10.0, "mkt_cap": 800e6, "what": "hoy, pequeña",
+         "event:insider_buy": True, "event:flow": False, "event:13dg": False},
+        {"ticker": "OLD", "signal_date": idx[-15], "close": 10.0, "mkt_cap": 500e9, "what": "antigua",
+         "event:insider_buy": True, "event:flow": False, "event:13dg": False}])
+    save_scan({"events": events, "prices": {t: bars for t in ("BIG", "SML", "OLD")},
+               "since": idx[-25].date(), "end": idx[-1].date()}, tmp_path / "scan")
+    (tmp_path / "settings.json").write_text(json.dumps({"data": {"price_source": "research"}}), encoding="utf-8")
+
+    page = SignalsPage(tmp_path / "reports", tmp_path / "scan", settings_path=tmp_path / "settings.json")
+    qtbot.addWidget(page)
+    started = []
+    page.start_scan = lambda: started.append(1)              # nothing here may fetch
+
+    def listed():
+        return {page.list.item(i).data(Qt_UserRole)["ticker"] for i in range(page.list.count())}
+
+    from PySide6.QtCore import Qt as _Qt
+    Qt_UserRole = _Qt.UserRole
+    assert listed() == {"BIG", "SML"}                        # last 7 days by default
+    page.days.setValue(60)
+    assert listed() == {"BIG", "SML", "OLD"}                 # wider window, no download
+    page.cap.setCurrentIndex(page.cap.findData("mega"))
+    assert listed() == {"BIG", "OLD"} and "tamaño" in page.coverage.text().lower()
+    page.cap.setCurrentIndex(page.cap.findData("small"))
+    assert listed() == {"SML"}
+    page.cap.setCurrentIndex(page.cap.findData("all"))
+    page.days.setValue(60)
+    assert len(listed()) == 3 and started == []              # never searched again

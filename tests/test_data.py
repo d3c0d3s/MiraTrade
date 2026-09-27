@@ -251,3 +251,70 @@ def test_sec_downloads_run_in_parallel_without_exceeding_the_budget(tmp_path):
     assert peak[0] > 1                                     # genuinely concurrent
     assert elapsed < serial * 0.8                          # faster than one at a time
     assert elapsed >= floor * 0.8                          # and never faster than the budget allows
+
+
+def test_a_finished_day_is_parsed_once_and_reused(tmp_path, monkeypatch):
+    """Raw filings were already cached, but every scan rebuilt a table from each XML. A day that
+    is over cannot gain filings, so its parsed rows are kept and reused verbatim."""
+    from datetime import date
+
+    from miratrade.data import sec
+
+    day = date(2026, 9, 11)
+    index = ("Form Type   Company Name   CIK   Date Filed  File Name\n" + "-" * 40 + "\n"
+             "4           ACME CORP      1     20260911    edgar/data/1/a.txt\n")
+    parsed = 0
+    real_parse = sec.parse_form4_xml
+
+    def counting_parse(*args, **kwargs):
+        nonlocal parsed
+        parsed += 1
+        return real_parse(*args, **kwargs)
+
+    monkeypatch.setattr(sec, "parse_form4_xml", counting_parse)
+
+    class Client:
+        cache_dir = tmp_path
+        calls = 0
+
+        def get(self, url, cache=True, missing=(404,), max_age_days=None):
+            Client.calls += 1
+            if "daily-index" in url:
+                return index.encode() if url.endswith("form.20260911.idx") else None
+            if "Archives" in url:
+                return FORM4.encode()
+            return None
+
+    client = Client()
+    first = sec.fetch_insiders(day, day, client, today=date(2026, 9, 20))
+    assert len(first) == 1 and parsed == 1 and (tmp_path / "parsed" / "form4_20260911.pkl").exists()
+
+    calls_after_first = Client.calls
+    second = sec.fetch_insiders(day, day, client, today=date(2026, 9, 20))
+    assert parsed == 1                                      # nothing re-parsed
+    assert Client.calls == calls_after_first                # and nothing re-read
+    assert second["ticker"].tolist() == first["ticker"].tolist()
+    assert second["filing_date"].tolist() == first["filing_date"].tolist()
+    assert second["is_officer"].tolist() == first["is_officer"].tolist()
+    assert second["value"].tolist() == first["value"].tolist()
+
+
+def test_today_is_never_cached_because_more_filings_may_arrive(tmp_path):
+    from datetime import date
+
+    from miratrade.data import sec
+
+    day = date(2026, 9, 11)
+    index = ("Form Type   Company   CIK   Date Filed  File Name\n" + "-" * 40 + "\n"
+             "4           ACME      1     20260911    edgar/data/1/a.txt\n")
+
+    class Client:
+        cache_dir = tmp_path
+
+        def get(self, url, cache=True, missing=(404,), max_age_days=None):
+            if "daily-index" in url:
+                return index.encode()
+            return FORM4.encode() if "Archives" in url else None
+
+    sec.fetch_insiders(day, day, Client(), today=day)
+    assert not (tmp_path / "parsed" / "form4_20260911.pkl").exists()

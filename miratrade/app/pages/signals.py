@@ -17,8 +17,9 @@ from miratrade.app.chart import CandleChart
 from miratrade.app.widgets import ShapeIcon, es_date, es_num, muted
 from miratrade.config import Config
 from miratrade.outcomes import EVENT_TYPES, variants
-from miratrade.scan import (CONDITION_LABELS, DEFAULT_VARIANT, EVENT_LABELS, contract_for, evidence,
-                            latest_history_report, load_history, load_scan, variant_label)
+from miratrade.scan import (CONDITION_LABELS, DEFAULT_VARIANT, EVENT_LABELS, contract_for, covered_days,
+                            evidence, filter_events, latest_history_report, load_history, load_scan,
+                            variant_label)
 
 CONTEXT_LABELS = {"trend:up": "Tendencia al alza (sobre sus medias de 20 y 50)",
                   "trend:above_200": "Por encima de su media de 200 sesiones",
@@ -199,15 +200,18 @@ class SignalsPage(QWidget):
         self.days.setRange(1, 60)
         self.days.setValue(7)
         self.days.setSuffix(" días")
-        self.days.setAccessibleName("Buscar eventos de los últimos días")
+        self.days.setAccessibleName("Mostrar los eventos de los últimos días")
+        self.days.setToolTip("Filtra lo ya descargado. No vuelve a buscar.")
+        self.days.valueChanged.connect(lambda _: self.apply_filters())
         self.cap = data.cap_combo(data.read_settings(self.settings_path).data.cap_tier, self._cap_changed)
+        self.cap.setToolTip("Filtra lo ya descargado por tamaño de empresa. No vuelve a buscar.")
         self.variant = QComboBox()
         for v in variants(cfg):
             self.variant.addItem(variant_label(v, cfg), v)
         self.variant.setCurrentIndex(max(0, self.variant.findData(DEFAULT_VARIANT)))
         self.variant.setAccessibleName("Perfil de resultado para la evidencia")
         self.variant.currentIndexChanged.connect(lambda _: self._show_selected(self.list.currentItem()))
-        self.scan_btn = QPushButton("Buscar eventos")
+        self.scan_btn = QPushButton("Actualizar datos")
         self.scan_btn.setObjectName("primary")
         self.scan_btn.clicked.connect(self.start_scan)
         self.cancel_btn = QPushButton("Cancelar")
@@ -230,6 +234,8 @@ class SignalsPage(QWidget):
         self.log.hide()
 
         # Data-source banner: says up front whether a scan can even get prices.
+        self.coverage = muted("")
+        self.coverage.hide()
         self.source_msg = _label("", "body", wrap=True)
         self.source_btn = QPushButton("Abrir Configuración")
         self.source_btn.clicked.connect(self.open_settings.emit)
@@ -348,6 +354,7 @@ class SignalsPage(QWidget):
         top = QVBoxLayout()
         top.setContentsMargins(0, 0, 24, 0)
         top.addLayout(bar)
+        top.addWidget(self.coverage)
         top.addWidget(self.banner)
         top.addWidget(self.log)
         root.addLayout(top)
@@ -366,6 +373,7 @@ class SignalsPage(QWidget):
 
     def _cap_changed(self, tier: str) -> None:
         data.set_cap_tier(tier, self.settings_path)
+        self.apply_filters()
 
     def refresh_cap(self) -> None:
         """Pick up a size chosen on the other screen."""
@@ -408,6 +416,10 @@ class SignalsPage(QWidget):
         else:
             self.meta.setText("Sin búsqueda todavía")
         self.filter.setEnabled(has)
+        self.apply_filters()
+
+    def _fill_list(self, events: pd.DataFrame) -> None:
+        self.list.clear()
         for ev in events.to_dict("records"):
             item = QListWidgetItem()
             item.setData(Qt.UserRole, ev)
@@ -418,7 +430,7 @@ class SignalsPage(QWidget):
             self.list.setItemWidget(item, card)
         self._resize_cards()
         self._apply_filter()
-        if not has:
+        if not len(events):
             self._show_selected(None)
 
     # ------------------------------------------------------------------ list layout and filter
@@ -436,6 +448,31 @@ class SignalsPage(QWidget):
             card = self.list.itemWidget(item)
             if card is not None:
                 item.setSizeHint(QSize(row, card.fit(row - 2 * pad) + 2 * pad))
+
+    def apply_filters(self) -> None:
+        """Window, size and ticker are views over the download: rebuild the list, never fetch."""
+        if self.scan is None:
+            return
+        events = self.scan["events"]
+        tier = self.cap.currentData() or "all"
+        sizes = pd.to_numeric(events["mkt_cap"], errors="coerce") if "mkt_cap" in events else None
+        # An older download has no company sizes, so every tier would empty the list in silence.
+        sizeless = tier != "all" and (sizes is None or not sizes.notna().any())
+        shown = filter_events(events, days=self.days.value(), cap_tier=tier, end=self.scan.get("end"))
+        self._fill_list(shown)
+        if sizeless and len(events):
+            self.empty.setText("Esta descarga es anterior al filtro de tamaño y no guardó la capitalización "
+                               "de las empresas. Pulsa «Actualizar datos», o elige «Todas» en Tamaño.")
+            self.empty.setVisible(True)
+        have = covered_days(self.scan)
+        asking = self.days.value()
+        notes = []
+        if asking > have:
+            notes.append(f"Solo hay {have} días descargados; pulsa «Actualizar datos» para traer más.")
+        if tier != "all" and not sizeless:
+            notes.append(f"Filtrando por tamaño: {self.cap.currentText()}.")
+        self.coverage.setText("  ".join(notes))
+        self.coverage.setVisible(bool(notes))
 
     def _apply_filter(self, _text: str = "") -> None:
         needle = self.filter.text().strip().upper()
@@ -523,9 +560,10 @@ class SignalsPage(QWidget):
         self.log.show()
         self.scan_btn.setEnabled(False)
         self.cancel_btn.show()
-        self.meta.setText(f"Buscando eventos de los últimos {self.days.value()} días…")
-        self.proc.start(sys.executable, data.scan_command(self.days.value(), self.variant.currentData(),
-                                                          self.scan_dir, self.report, self.cap.currentData()))
+        window = data.read_settings(self.settings_path).data.scan_days
+        self.meta.setText(f"Descargando los últimos {window} días…")
+        self.proc.start(sys.executable, data.scan_command(window, self.variant.currentData(),
+                                                          self.scan_dir, self.report, "all"))
 
     def _read_output(self) -> None:
         text = bytes(self.proc.readAllStandardOutput()).decode("utf-8", "replace")

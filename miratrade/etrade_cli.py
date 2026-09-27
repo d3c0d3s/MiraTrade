@@ -76,13 +76,25 @@ def cmd_chain(a) -> None:
         print(c[["symbol", "strike", "bid", "ask", "delta", "iv", "open_interest", "volume"]].to_string(index=False))
 
 
+QUOTE_STATUS = {
+    "REALTIME": "tiempo real: el acuerdo de datos de mercado está firmado",
+    "DELAYED": "con retraso: firma el acuerdo de datos de mercado en tu cuenta para tenerlas en vivo",
+    "CLOSING": "cierre de la sesión anterior; el mercado está cerrado, vuelve a comprobarlo en horario "
+               "de mercado para saber si tienes tiempo real",
+    "EH_REALTIME": "tiempo real fuera de horario",
+    "EH_BEFORE_OPEN": "antes de la apertura",
+    "EH_CLOSED": "fuera de horario, mercado cerrado",
+}
+
+
 def cmd_diagnose(a) -> None:
     raw = EtradeBroker().diagnose()
     out = Path(a.out or APP_DIR / "etrade_diagnose.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(raw, indent=2, default=str), encoding="utf-8")
-    print(f"Saved {out} (account ids masked). Quotes are: {', '.join(raw['quote_status']) or 'unknown'}"
-          + ("  ← sign the market data agreement for real-time" if "DELAYED" in raw["quote_status"] else ""))
+    print(f"Saved {out} (account ids masked).")
+    for status in raw["quote_status"] or ["?"]:
+        print(f"  Cotizaciones: {status} — {QUOTE_STATUS.get(status, 'estado no documentado')}")
 
 
 def cmd_logout(a) -> None:

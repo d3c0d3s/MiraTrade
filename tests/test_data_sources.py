@@ -225,3 +225,17 @@ def test_etrade_option_chain_filters_expiries():
     assert len(ch) == 1 and ch["expiry"].iat[0] == pd.Timestamp("2026-10-16")
     chain_calls = [c for c in FakeSession.calls if "optionchains" in c[0]]
     assert len(chain_calls) == 1 and chain_calls[0][1]["chainType"] == "CALL"
+
+
+def test_quote_status_covers_what_etrade_actually_returns():
+    """A closed market answers CLOSING, not REALTIME or DELAYED: the message must not imply the
+    market data agreement is missing when it simply cannot be told yet."""
+    from miratrade.etrade_cli import QUOTE_STATUS
+
+    assert {"REALTIME", "DELAYED", "CLOSING", "EH_REALTIME", "EH_BEFORE_OPEN", "EH_CLOSED"} <= set(QUOTE_STATUS)
+    assert "acuerdo de datos de mercado" in QUOTE_STATUS["DELAYED"]
+    assert "cerrado" in QUOTE_STATUS["CLOSING"]
+    payload = {"QuoteResponse": {"QuoteData": [{"Product": {"symbol": "SPY"}, "quoteStatus": "CLOSING",
+                                                "All": {"bid": 772.0, "ask": 772.04, "lastTrade": 771.35}}]}}
+    assert quote_status(payload) == {"CLOSING"}
+    assert parse_quotes(payload)["SPY"].bid == 772.0        # a closed market still parses

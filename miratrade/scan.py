@@ -56,10 +56,41 @@ def recent_events(panel: Mapping[str, pd.DataFrame], since: pd.Timestamp) -> pd.
         s = fired[-1]
         row = ind.iloc[s]
         rows.append({"ticker": t, "signal_date": ind.index[s], "close": float(row["close"]),
-                     "events_in_window": len(fired), **conditions(row)})
+                     "events_in_window": len(fired), "mkt_cap": float(row.get("mkt_cap", float("nan"))),
+                     **conditions(row)})
     if not rows:
-        return pd.DataFrame(columns=["ticker", "signal_date", "close", "events_in_window", *EVENT_TYPES])
+        return pd.DataFrame(columns=["ticker", "signal_date", "close", "events_in_window", "mkt_cap",
+                                     *EVENT_TYPES])
     return pd.DataFrame(rows).sort_values(["signal_date", "ticker"], ascending=[False, True]).reset_index(drop=True)
+
+
+def filter_events(events: pd.DataFrame, days: int | None = None, cap_tier: str = "all",
+                  kinds: tuple[str, ...] | None = None, end: date | None = None) -> pd.DataFrame:
+    """Narrow a saved scan without fetching anything: the window, the company size and the kind of
+    event are views over what was already downloaded, not reasons to search again."""
+    from miratrade.data.fundamentals import in_tier
+
+    if events is None or events.empty:
+        return events if events is not None else pd.DataFrame()
+    out = events
+    if days is not None:
+        last = pd.Timestamp(end) if end is not None else pd.to_datetime(out["signal_date"]).max()
+        out = out[pd.to_datetime(out["signal_date"]) > last - pd.Timedelta(days=days)]
+    if cap_tier != "all":
+        caps = pd.to_numeric(out.get("mkt_cap"), errors="coerce") if "mkt_cap" in out else None
+        out = out[[in_tier(c, cap_tier) for c in caps]] if caps is not None else out.iloc[0:0]
+    if kinds:
+        present = [k for k in kinds if k in out]
+        out = out[out[present].astype(bool).any(axis=1)] if present else out.iloc[0:0]
+    return out
+
+
+def covered_days(scan: Mapping | None) -> int:
+    """How many days the saved scan actually downloaded, so the screen can say when a filter is
+    asking for more than there is."""
+    if not scan or scan.get("since") is None or scan.get("end") is None:
+        return 0
+    return max(0, (scan["end"] - scan["since"]).days)
 
 
 def describe(ev: Mapping, insiders: pd.DataFrame | None, ownership: pd.DataFrame | None,

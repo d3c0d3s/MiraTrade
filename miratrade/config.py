@@ -188,6 +188,8 @@ class DataParams:
     price_source: str = "schwab"        # daily history: "schwab" | "research" (see below)
     quote_broker: str = "schwab"        # live quotes and option chains: "schwab" | "etrade"
     cap_tier: str = "all"               # company size to keep, a key of CAP_TIERS
+    scan_days: int = 30                 # days one "Actualizar datos" downloads; the screen
+                                        # filters inside that, without fetching again
     # "research" = public web sources (Yahoo via yfinance, Stooq, CBOE's page). Their terms allow
     # personal, non-commercial use at most: off by default, never the default of a shipped app.
 
