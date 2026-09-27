@@ -1,4 +1,6 @@
 """Recent-event scan and the evidence lookup behind the Señales screen."""
+from datetime import timedelta
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -126,3 +128,29 @@ def test_contract_for_models_the_call_the_profile_would_buy():
     assert contract_for(prices, idx[-1], "stock12m_30") is None     # share profile: no contract
     assert contract_for(prices.head(5), idx[4], "call45_40") is None  # too little history
     assert contract_for(pd.DataFrame(), idx[-1], "call45_40") is None
+
+
+def test_scan_explains_that_it_downloads_before_the_window(monkeypatch):
+    """The download starts 30 days earlier so the cluster counts are right; the log must say so
+    instead of looking like the scan is searching the wrong dates."""
+    from miratrade.config import Config
+    from miratrade.scan import run_scan
+
+    lines, asked = [], {}
+    prices, insiders, flow = make_market(n_tickers=4)
+    end = prices["SPY"].index[-1].date()
+
+    def grab(start, stop):
+        asked["insiders"] = (start, stop)
+        return insiders
+
+    run_scan(days=7, end=end, log=lines.append,
+             fetch={"insiders": grab,
+                    "ownership": lambda s, e, i: pd.DataFrame(columns=OWNERSHIP_COLUMNS),
+                    "prices": lambda t, s, e: {k: prices[k] for k in t if k in prices},
+                    "flow": lambda: flow})
+    look = max(Config().insider.lookback_days, Config().smart.lookback_days)
+    since = end - timedelta(days=7)
+    assert asked["insiders"][0] == since - timedelta(days=look)      # the extra history is fetched
+    said = " ".join(lines)
+    assert str(since) in said and str(since - timedelta(days=look)) in said and "sigue contando" in said

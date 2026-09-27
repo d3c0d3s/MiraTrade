@@ -238,14 +238,18 @@ def run_scan(days: int = 7, end: date | None = None, cfg: Config = Config(), flo
         log(why)
         fetch = _default_fetchers(log)
 
-    log(f"Compras de directivos (Form 4) {since} → {end} …")
-    insiders = fetch["insiders"](since - timedelta(days=look), end)
+    # The events are the ones inside the window, but a purchase filed up to `look` days earlier
+    # still counts towards the cluster and the amounts on those days, so the download starts there.
+    first_filing = since - timedelta(days=look)
+    log(f"Eventos del {since} al {end}. Descargando Form 4 desde el {first_filing}, porque una compra "
+        f"sigue contando {look} días …")
+    insiders = fetch["insiders"](first_filing, end)
     new_buys = insiders[(insiders["code"] == "P") & (insiders["value"] >= cfg.insider.min_value_usd)
                         & (pd.to_datetime(insiders["filing_date"]).dt.date >= since)]
     tickers = set(new_buys["ticker"])
     ownership = None
     if smart_money:
-        log(f"13D / 13G {since} → {end} …")
+        log(f"13D / 13G desde el {first_filing} (eventos del {since} al {end}) …")
         ownership = fetch["ownership"](since - timedelta(days=look), end, insiders)
         fresh = ownership[(pd.to_datetime(ownership["filing_date"]).dt.date >= since) & ~ownership["amendment"].astype(bool)
                           & ~ownership["passive"].astype(bool)]
