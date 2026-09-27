@@ -56,3 +56,12 @@ def test_cap_conditions():
     assert not c["cap:small"] and not c["ins:buy_0.1%cap"]
     c = conditions(_row(np.nan, 1e6))                              # unknown cap: neither fires
     assert not c["cap:small"] and not c["ins:buy_0.1%cap"]
+
+
+def test_market_cap_accepts_mixed_datetime_units():
+    """Cached bars and freshly downloaded ones arrive with different datetime units."""
+    shares = parse_shares(PAYLOAD).assign(ticker="ACME")
+    shares["filed"] = shares["filed"].astype("datetime64[us]")
+    dates = pd.bdate_range("2025-02-18", "2025-05-12").astype("datetime64[s]")
+    cap = market_cap(pd.DatetimeIndex(dates), pd.Series(10.0, index=dates), shares, "ACME")
+    assert cap.notna().sum() > 0 and cap.iloc[-1] == 12_000

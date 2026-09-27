@@ -138,6 +138,10 @@ def market_cap(dates: pd.DatetimeIndex, close: pd.Series, shares: pd.DataFrame |
     s = shares[shares["ticker"] == ticker].sort_values("filed")
     if s.empty:
         return out
-    known = pd.merge_asof(pd.DataFrame({"date": dates}), s.rename(columns={"filed": "date"})[["date", "shares"]],
-                          on="date", direction="backward")
+    # Price indexes and filing dates reach here with different datetime units depending on whether
+    # the bars were cached or freshly downloaded; merge_asof refuses to mix them.
+    left = pd.DataFrame({"date": pd.DatetimeIndex(dates).astype("datetime64[ns]")})
+    right = pd.DataFrame({"date": pd.to_datetime(s["filed"]).astype("datetime64[ns]"),
+                          "shares": s["shares"].to_numpy()})
+    known = pd.merge_asof(left, right, on="date", direction="backward")
     return pd.Series(known["shares"].to_numpy() * close.to_numpy(), index=dates)
