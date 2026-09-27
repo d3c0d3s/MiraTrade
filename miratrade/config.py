@@ -164,12 +164,26 @@ class BrokerParams:
     callback_url: str = "https://127.0.0.1:8182"
 
 
+# Company size bands (US convention). Picking one shrinks the universe *before* prices are
+# downloaded and simulated, which is where the time goes; it does not make the edge better.
+CAP_TIERS: dict[str, tuple[float | None, float | None, str]] = {
+    "all": (None, None, "Todas"),
+    "mega": (200e9, None, "Mega · 200.000 M$ o más"),
+    "large": (10e9, 200e9, "Grandes · 10.000 a 200.000 M$"),
+    "mid": (2e9, 10e9, "Medianas · 2.000 a 10.000 M$"),
+    "small": (300e6, 2e9, "Pequeñas · 300 a 2.000 M$"),
+    "micro": (None, 300e6, "Micro · menos de 300 M$"),
+    "mid_plus": (2e9, None, "Medianas o mayores · 2.000 M$ o más"),
+}
+
+
 @dataclass
 class DataParams:
     """Where market data comes from. Every user connects their OWN broker account, under that
     broker's personal-use API terms; MiraTrade never redistributes one user's data to another."""
     price_source: str = "schwab"        # daily history: "schwab" | "research" (see below)
     quote_broker: str = "schwab"        # live quotes and option chains: "schwab" | "etrade"
+    cap_tier: str = "all"               # company size to keep, a key of CAP_TIERS
     # "research" = public web sources (Yahoo via yfinance, Stooq, CBOE's page). Their terms allow
     # personal, non-commercial use at most: off by default, never the default of a shipped app.
 

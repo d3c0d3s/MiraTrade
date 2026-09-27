@@ -5,11 +5,16 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, Qt, Signal
-from PySide6.QtWidgets import (QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPlainTextEdit, QPushButton,
-                               QSpinBox, QTabWidget, QTextBrowser, QVBoxLayout, QWidget)
+import pandas as pd
 
-from miratrade.app import data
+from PySide6.QtCore import QProcess, Qt, Signal
+from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPlainTextEdit,
+                               QPushButton, QScrollArea, QSpinBox, QTabWidget, QTextBrowser, QVBoxLayout,
+                               QWidget)
+
+from miratrade.app import data, theme
+from miratrade.scan import variant_label
+from miratrade.app.charts import BarChart, EquityCurve, Histogram, event_type_bars, profile_bars, variants_in
 from miratrade.app.widgets import muted, table
 
 RULE_HEADERS = {"rule": "Regla", "train_n": "Descubr. n", "train_avg_r": "Descubr. R", "test_n": "Valid. n",
@@ -20,10 +25,11 @@ RULE_HEADERS = {"rule": "Regla", "train_n": "Descubr. n", "train_avg_r": "Descub
 class ReportsPage(QWidget):
     report_finished = Signal(str)
 
-    def __init__(self, reports_dir: Path | None = None):
+    def __init__(self, reports_dir: Path | None = None, settings_path: Path | None = None):
         super().__init__()
         self.setObjectName("page")
         self.reports_dir = Path(reports_dir or data.REPORTS_DIR)
+        self.settings_path = Path(settings_path or data.SETTINGS_PATH)
         self.proc: QProcess | None = None
 
         # left: new analysis + history
@@ -35,6 +41,7 @@ class ReportsPage(QWidget):
         self.days.setValue(365)
         self.days.setSuffix(" días")
         self.days.setAccessibleName("Periodo del análisis en días")
+        self.cap = data.cap_combo(data.read_settings(self.settings_path).data.cap_tier, self._cap_changed)
         self.run_btn = QPushButton("Ejecutar análisis")
         self.run_btn.setObjectName("primary")
         self.run_btn.clicked.connect(self.start_analysis)
@@ -54,7 +61,7 @@ class ReportsPage(QWidget):
         self.history.setTextElideMode(Qt.ElideNone)
         self.history.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.history.currentItemChanged.connect(self._show_selected)
-        for w in (title, self.days, self.run_btn, self.cancel_btn, self.status, self.log, hist):
+        for w in (title, self.days, self.cap, self.run_btn, self.cancel_btn, self.status, self.log, hist):
             left.addWidget(w)
         left.addWidget(self.history, 1)
         left_box = QWidget()
@@ -71,6 +78,8 @@ class ReportsPage(QWidget):
         self.rules = table(headers=RULE_HEADERS)
         self.wf = table()
         self.candidates = table()
+        self.charts_tab = self._build_charts()
+        self.tabs.addTab(self.charts_tab, "Gráficas")
         self.tabs.addTab(self.summary, "Reporte")
         self.tabs.addTab(self.rules, "Reglas validadas")
         self.tabs.addTab(self.wf, "Walk-forward")
@@ -86,6 +95,69 @@ class ReportsPage(QWidget):
         root.addWidget(left_box)
         root.addLayout(right, 1)
         self.refresh()
+
+    def _build_charts(self) -> QWidget:
+        """What the tables make hard to see: how the result added up, how it was distributed and
+        how the kinds of event compare."""
+        self.variant = QComboBox()
+        self.variant.setAccessibleName("Perfil de resultado")
+        self.variant.currentIndexChanged.connect(lambda _: self._draw_charts())
+        head = QHBoxLayout()
+        head.addWidget(muted("Perfil"))
+        head.addWidget(self.variant)
+        head.addStretch(1)
+        self.equity = EquityCurve()
+        self.hist = Histogram()
+        self.by_event = BarChart("Resultado medio por tipo de evento")
+        self.by_profile = BarChart("Resultado medio por perfil")
+        body = QVBoxLayout()
+        body.setContentsMargins(0, 0, 12, 0)
+        body.setSpacing(14)
+        body.addLayout(head)
+        for c in (self.equity, self.hist, self.by_event, self.by_profile):
+            c.setMinimumHeight(250)
+            body.addWidget(c)
+        self.charts_note = muted("")
+        body.addWidget(self.charts_note)
+        inner = QWidget()
+        inner.setObjectName("page")
+        inner.setLayout(body)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(inner)
+        return scroll
+
+    def _draw_charts(self) -> None:
+        events = getattr(self, "_events", None)
+        variant = self.variant.currentData()
+        if events is None or events.empty or not variant:
+            for c in (self.equity, self.hist, self.by_event, self.by_profile):
+                c.set_data([], []) if isinstance(c, (EquityCurve, BarChart)) else c.set_data([])
+            self.charts_note.setText("Este reporte no guardó los resultados por evento (events.csv).")
+            return
+        column = f"ret_{variant}"
+        rows = (events.dropna(subset=[column])                       # events.csv keeps dates as text
+                .assign(signal_date=lambda d: pd.to_datetime(d["signal_date"], errors="coerce"))
+                .dropna(subset=["signal_date"]).sort_values("signal_date"))
+        split = rows["signal_date"].quantile(0.6) if len(rows) else None
+        self.equity.set_data(rows["signal_date"], rows[column], split)
+        target, stop = self._targets(variant)
+        self.hist.set_data(rows[column], [(target, f"objetivo +{target * 100:.0f} %", theme.UP),
+                                          (-stop, f"stop −{stop * 100:.0f} %", theme.DOWN)])
+        self.by_event.set_data(*event_type_bars(events, variant),
+                               note="Solo cuenta el tipo de evento, no las reglas.")
+        self.by_profile.set_data(*profile_bars(getattr(self, "_profiles", None)),
+                                 note="Cada perfil es una combinación de instrumento, objetivo y stop.")
+        self.charts_note.setText(f"{len(rows)} eventos con resultado en el perfil {variant}. "
+                                 "Los precios de las calls son de modelo, no cotizaciones.")
+
+    @staticmethod
+    def _targets(variant: str) -> tuple[float, float]:
+        from miratrade.config import Config
+
+        pct = int(variant.rsplit("_", 1)[-1])
+        stops = {int(round(t * 100)): s for t, s in Config().outcomes.targets}
+        return pct / 100, stops.get(pct, 0.25)
 
     # ------------------------------------------------------------------ history
 
@@ -114,6 +186,15 @@ class ReportsPage(QWidget):
         self.rules.model().set(rep["rules"][cols] if cols else rep["rules"])
         self.wf.model().set(rep["walk_forward"])
         self.candidates.model().set(rep["candidates"])
+        self._events, self._profiles = rep.get("events"), rep.get("profiles")
+        current = self.variant.currentData()
+        self.variant.blockSignals(True)
+        self.variant.clear()
+        for v in variants_in(self._events):
+            self.variant.addItem(variant_label(v), v)
+        self.variant.setCurrentIndex(max(0, self.variant.findData(current or "call45_40")))
+        self.variant.blockSignals(False)
+        self._draw_charts()
 
     # ------------------------------------------------------------------ running an analysis
 
@@ -130,7 +211,17 @@ class ReportsPage(QWidget):
         self.run_btn.setEnabled(False)
         self.cancel_btn.show()
         self.status.setText(f"Analizando {self.days.value()} días…")
-        self.proc.start(sys.executable, data.analyze_command(self.days.value(), out))
+        self.proc.start(sys.executable, data.analyze_command(self.days.value(), out, self.cap.currentData()))
+
+    def _cap_changed(self, tier: str) -> None:
+        data.set_cap_tier(tier, self.settings_path)
+
+    def refresh_cap(self) -> None:
+        tier = data.read_settings(self.settings_path).data.cap_tier
+        if tier != self.cap.currentData():
+            self.cap.blockSignals(True)
+            self.cap.setCurrentIndex(max(0, self.cap.findData(tier)))
+            self.cap.blockSignals(False)
 
     def _read_output(self) -> None:
         text = bytes(self.proc.readAllStandardOutput()).decode("utf-8", "replace")

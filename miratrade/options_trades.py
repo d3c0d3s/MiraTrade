@@ -40,6 +40,23 @@ def bs_delta(s: float, k: float, t: float, r: float, sigma: float, kind: str = "
     return _N.cdf(d1) if kind == "C" else _N.cdf(d1) - 1
 
 
+def bs_greeks(s: float, k: float, t: float, r: float, sigma: float, kind: str = "C") -> dict:
+    """Delta, theta **per calendar day**, vega **per volatility point** and gamma. Modelled, like
+    every option number here: with a broker connected these come from the real chain instead."""
+    if s <= 0 or k <= 0 or t <= 0 or sigma <= 0:
+        return {"delta": float(kind == "C" and s > k), "theta": 0.0, "vega": 0.0, "gamma": 0.0}
+    st = sigma * math.sqrt(t)
+    d1 = (math.log(s / k) + (r + 0.5 * sigma ** 2) * t) / st
+    d2 = d1 - st
+    pdf = math.exp(-0.5 * d1 * d1) / math.sqrt(2 * math.pi)
+    discount = math.exp(-r * t)
+    theta_year = (-s * pdf * sigma / (2 * math.sqrt(t))
+                  - r * k * discount * (_N.cdf(d2) if kind == "C" else -_N.cdf(-d2)))
+    return {"delta": _N.cdf(d1) if kind == "C" else _N.cdf(d1) - 1,
+            "theta": theta_year / 365, "vega": s * pdf * math.sqrt(t) / 100,
+            "gamma": pdf / (s * st)}
+
+
 def strike_increment(s: float) -> float:
     return 0.5 if s < 25 else 1.0 if s < 100 else 2.5 if s < 250 else 5.0
 

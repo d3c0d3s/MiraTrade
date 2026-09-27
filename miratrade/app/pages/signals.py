@@ -8,16 +8,17 @@ from pathlib import Path
 import pandas as pd
 from PySide6.QtCore import QProcess, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QPainter
-from PySide6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-                               QPlainTextEdit, QPushButton, QSizePolicy, QSpinBox, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget,
+                               QListWidgetItem,
+                               QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QVBoxLayout, QWidget)
 
 from miratrade.app import data, theme
 from miratrade.app.chart import CandleChart
 from miratrade.app.widgets import ShapeIcon, es_date, es_num, muted
 from miratrade.config import Config
 from miratrade.outcomes import EVENT_TYPES, variants
-from miratrade.scan import (CONDITION_LABELS, DEFAULT_VARIANT, EVENT_LABELS, evidence, latest_history_report,
-                            load_history, load_scan, variant_label)
+from miratrade.scan import (CONDITION_LABELS, DEFAULT_VARIANT, EVENT_LABELS, contract_for, evidence,
+                            latest_history_report, load_history, load_scan, variant_label)
 
 CONTEXT_LABELS = {"trend:up": "Tendencia al alza (sobre sus medias de 20 y 50)",
                   "trend:above_200": "Por encima de su media de 200 sesiones",
@@ -86,6 +87,66 @@ class EventCard(QWidget):
         return self.height()
 
 
+class ContractCard(QFrame):
+    """The contract the chosen profile would buy, with its cost and greeks. Every number is
+    modelled from the stock's realised volatility, which the footer says plainly."""
+
+    FIELDS = (("Prima", "premium"), ("Delta", "delta"), ("Coste 1 contrato", "cost"), ("Theta · $/día", "theta"),
+              ("Strike", "strike"), ("Vega", "vega"), ("Vol. implícita", "iv"), ("Sobre el strike", "in_the_money"))
+
+    def __init__(self):
+        super().__init__()
+        self.setObjectName("evidence")
+        self.head = _label("", "h2", wrap=True)
+        self.sub = muted("")
+        self.exits = _label("", "body", wrap=True)
+        self.values: dict[str, QLabel] = {}
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(14)
+        grid.setVerticalSpacing(8)
+        for i, (caption, key) in enumerate(self.FIELDS):
+            box = QVBoxLayout()
+            box.setSpacing(1)
+            name = QLabel(caption)
+            name.setObjectName("label")
+            value = QLabel("–")
+            value.setObjectName("price")
+            self.values[key] = value
+            box.addWidget(name)
+            box.addWidget(value)
+            holder = QWidget()
+            holder.setLayout(box)
+            grid.addWidget(holder, i // 2, i % 2)
+        body = QVBoxLayout(self)
+        body.setContentsMargins(14, 12, 14, 12)
+        body.setSpacing(8)
+        body.addWidget(self.head)
+        body.addWidget(self.sub)
+        body.addLayout(grid)
+        body.addWidget(self.exits)
+        body.addWidget(muted("Precios de modelo, no cotizaciones. Con tu cuenta conectada se usará la cadena real."))
+
+    def set_contract(self, ticker: str, c: dict | None, reason: str = "") -> None:
+        if not c:
+            self.head.setText("Sin contrato")
+            self.sub.setText(reason or "Este perfil compra la acción, no una opción.")
+            self.exits.setText("")
+            for label in self.values.values():
+                label.setText("–")
+            return
+        self.head.setText(f"{ticker} {es_num(c['strike'])} C")
+        self.sub.setText(f"vence el {es_date(c['expiry'])} · {c['dte']} días · acción a {es_num(c['spot'])} $")
+        shown = {"premium": f"{es_num(c['premium'])} $", "delta": es_num(c["delta"]),
+                 "cost": f"{es_num(c['cost'], 0)} $", "theta": es_num(c["theta"], 3),
+                 "strike": es_num(c["strike"]), "vega": es_num(c["vega"], 3),
+                 "iv": f"{es_num(c['iv'] * 100, 0)} %",
+                 "in_the_money": f"{es_num(c['in_the_money'] * 100, 1, sign=True)} %"}
+        for key, text in shown.items():
+            self.values[key].setText(text)
+        self.exits.setText(f"Vender en {es_num(c['target'])} $ (+{c['target_pct'] * 100:.0f} %) · "
+                           f"stop en {es_num(c['stop'])} $ (−{c['stop_pct'] * 100:.0f} %)")
+
+
 class OutcomeBar(QWidget):
     """Target / stop / neither as one stacked bar; the labels say the numbers (never colour alone)."""
 
@@ -137,6 +198,7 @@ class SignalsPage(QWidget):
         self.days.setValue(7)
         self.days.setSuffix(" días")
         self.days.setAccessibleName("Buscar eventos de los últimos días")
+        self.cap = data.cap_combo(data.read_settings(self.settings_path).data.cap_tier, self._cap_changed)
         self.variant = QComboBox()
         for v in variants(cfg):
             self.variant.addItem(variant_label(v, cfg), v)
@@ -157,7 +219,8 @@ class SignalsPage(QWidget):
         titles.addWidget(self.meta)
         bar.addLayout(titles)
         bar.addStretch(1)
-        for w in (muted("Perfil"), self.variant, self.days, self.scan_btn, self.cancel_btn):
+        for w in (muted("Perfil"), self.variant, muted("Tamaño"), self.cap, self.days,
+                  self.scan_btn, self.cancel_btn):
             bar.addWidget(w)
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
@@ -226,11 +289,15 @@ class SignalsPage(QWidget):
         # right: evidence and the proposed profile
         side = QWidget()
         side.setObjectName("side")
-        side.setFixedWidth(330)
-        s = QVBoxLayout(side)
-        s.setContentsMargins(20, 20, 20, 20)
+        side.setFixedWidth(356)
+        outer = QVBoxLayout(side)
+        outer.setContentsMargins(18, 18, 18, 18)
+        outer.setSpacing(12)
+        s = QVBoxLayout()                       # the detail scrolls; the actions stay in sight
+        s.setContentsMargins(0, 0, 10, 0)
         s.setSpacing(12)
         self.profile = _label("", "h2", wrap=True)
+        self.contract = ContractCard()
         self.evidence_text = _label("", "body", wrap=True)
         self.outcome = OutcomeBar()
         self.legend = muted("")
@@ -252,14 +319,22 @@ class SignalsPage(QWidget):
         for btn in (self.preview_btn, self.practice_btn):
             btn.setEnabled(False)
             btn.setToolTip("Llega en el siguiente paso: elegir el contrato y abrir la vista previa o la práctica.")
-        for w in (_label("OPERACIÓN DE REFERENCIA", "label"), self.profile, box, self.similar,
+        for w in (_label("OPERACIÓN DE REFERENCIA", "label"), self.profile, self.contract, box, self.similar,
                   _label("REGLAS VALIDADAS", "label"), self.rules_text, _label("CONTEXTO (NO DISPARA SEÑALES)", "label"),
                   self.context):
             s.addWidget(w)
         s.addStretch(1)
-        s.addWidget(self.preview_btn)
-        s.addWidget(self.practice_btn)
-        s.addWidget(muted(DISCLAIMER))
+        detail = QWidget()
+        detail.setObjectName("page")
+        detail.setLayout(s)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setWidget(detail)
+        outer.addWidget(scroll, 1)
+        outer.addWidget(self.preview_btn)
+        outer.addWidget(self.practice_btn)
+        outer.addWidget(muted(DISCLAIMER))
 
         body = QHBoxLayout()
         body.setSpacing(24)
@@ -286,6 +361,17 @@ class SignalsPage(QWidget):
         self.refresh()
 
     # ------------------------------------------------------------------ data
+
+    def _cap_changed(self, tier: str) -> None:
+        data.set_cap_tier(tier, self.settings_path)
+
+    def refresh_cap(self) -> None:
+        """Pick up a size chosen on the other screen."""
+        tier = data.read_settings(self.settings_path).data.cap_tier
+        if tier != self.cap.currentData():
+            self.cap.blockSignals(True)
+            self.cap.setCurrentIndex(max(0, self.cap.findData(tier)))
+            self.cap.blockSignals(False)
 
     def refresh_source(self) -> None:
         """Whether a scan could get prices right now (checked without downloading anything)."""
@@ -384,6 +470,7 @@ class SignalsPage(QWidget):
         v = self.variant.currentData()
         self.profile.setText(variant_label(v, self.cfg))
         if item is None:
+            self.contract.set_contract("", None, "Elige un evento.")
             for w in (self.ticker, self.price, self.change, self.evidence_text, self.legend, self.similar,
                       self.rules_text, self.context):
                 w.setText("")
@@ -400,6 +487,9 @@ class SignalsPage(QWidget):
             ch = last / prev - 1
             self.change.setText(f"{es_num(ch * 100, 1, sign=True)} %")
             self.change.setStyleSheet(f"color: {theme.UP if ch >= 0 else theme.DOWN}")
+        contract = contract_for(prices, ev["signal_date"], v, self.cfg) if len(prices) else None
+        self.contract.set_contract(t, contract, "" if v.startswith("call") else
+                                   "Este perfil compra la acción, no una opción.")
         kind = next((k for k in EVENT_TYPES if ev.get(k)), "event:insider_buy")
         color, shape, _ = theme.EVENT_STYLE[kind]
         self.chart.set_data(prices, ev["signal_date"], color, shape)
@@ -433,7 +523,7 @@ class SignalsPage(QWidget):
         self.cancel_btn.show()
         self.meta.setText(f"Buscando eventos de los últimos {self.days.value()} días…")
         self.proc.start(sys.executable, data.scan_command(self.days.value(), self.variant.currentData(),
-                                                          self.scan_dir, self.report))
+                                                          self.scan_dir, self.report, self.cap.currentData()))
 
     def _read_output(self) -> None:
         text = bytes(self.proc.readAllStandardOutput()).decode("utf-8", "replace")

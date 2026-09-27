@@ -1,4 +1,5 @@
 """Recent-event scan and the evidence lookup behind the Señales screen."""
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -106,3 +107,22 @@ def test_scan_checks_the_price_source_before_downloading(monkeypatch):
     with pytest.raises(PriceSourceError, match="Configuración"):
         run_scan(days=7, log=lambda m: None)
     assert called == []                                    # nothing was downloaded
+
+
+def test_contract_for_models_the_call_the_profile_would_buy():
+    from miratrade.scan import contract_for
+
+    idx = pd.bdate_range("2026-01-02", periods=120)
+    close = pd.Series(50 * (1.002 ** np.arange(120)), index=idx)
+    prices = pd.DataFrame({"open": close, "high": close * 1.01, "low": close * 0.99,
+                           "close": close, "volume": 1e6}, index=idx)
+    c = contract_for(prices, idx[-1], "call45_40")
+    assert c is not None
+    assert (c["expiry"].date() - idx[-1].date()).days >= 45 and c["dte"] >= 45
+    assert 0.45 < c["delta"] < 0.85 and c["theta"] < 0 and c["vega"] > 0
+    assert c["premium"] > 0 and c["cost"] == pytest.approx(c["premium"] * 100)
+    assert c["target"] == pytest.approx(c["premium"] * 1.40)
+    assert c["stop"] == pytest.approx(c["premium"] * 0.75)          # +40 % pairs with −25 %
+    assert contract_for(prices, idx[-1], "stock12m_30") is None     # share profile: no contract
+    assert contract_for(prices.head(5), idx[4], "call45_40") is None  # too little history
+    assert contract_for(pd.DataFrame(), idx[-1], "call45_40") is None

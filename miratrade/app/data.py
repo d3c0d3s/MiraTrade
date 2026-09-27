@@ -91,7 +91,8 @@ def load_report(path: Path) -> dict:
         rules = rules[rules["validated"]]
     return {"markdown": (path / "edge_report.md").read_text(encoding="utf-8"),
             "rules": rules, "walk_forward": _csv(path / "walk_forward.csv"),
-            "candidates": _csv(path / "candidates.csv"), "trades": _csv(path / "trades.csv")}
+            "candidates": _csv(path / "candidates.csv"), "trades": _csv(path / "trades.csv"),
+            "events": _csv(path / "events.csv"), "profiles": _csv(path / "profiles.csv")}
 
 
 # --------------------------------------------------------------------------- settings
@@ -112,13 +113,39 @@ def write_settings(cfg: Config, path: Path = SETTINGS_PATH) -> None:
     tmp.replace(path)
 
 
-def analyze_command(days: int, out: Path, extra: list[str] | None = None) -> list[str]:
+def analyze_command(days: int, out: Path, cap: str = "all", extra: list[str] | None = None) -> list[str]:
     """Arguments for running an analysis as a separate process (the app never blocks on it)."""
     return ["-X", "utf8", "-W", "ignore", "-m", "miratrade.cli", "analyze", "--days", str(days),
-            "--out", str(out), *(extra or [])]
+            "--out", str(out), "--cap", cap, *(extra or [])]
 
 
-def scan_command(days: int, variant: str, save: Path, report: Path | None = None) -> list[str]:
+def scan_command(days: int, variant: str, save: Path, report: Path | None = None,
+                 cap: str = "all") -> list[str]:
     """Arguments for ``miratrade scan`` as a separate process; it saves its result in ``save``."""
     return ["-X", "utf8", "-W", "ignore", "-m", "miratrade.cli", "scan", "--days", str(days),
-            "--variant", variant, "--save", str(save), *(["--report", str(report)] if report else [])]
+            "--variant", variant, "--save", str(save), "--cap", cap,
+            *(["--report", str(report)] if report else [])]
+
+
+def set_cap_tier(tier: str, path: Path = SETTINGS_PATH) -> None:
+    """Remember the company-size filter, so both screens and the CLI agree on it."""
+    cfg = read_settings(path)
+    cfg.data.cap_tier = tier
+    write_settings(cfg, path)
+
+
+def cap_combo(current: str, on_change) -> "object":
+    """A size selector shared by Señales and Reportes."""
+    from PySide6.QtWidgets import QComboBox
+
+    from miratrade.config import CAP_TIERS
+
+    box = QComboBox()
+    for key, (_low, _high, label) in CAP_TIERS.items():
+        box.addItem(label, key)
+    box.setCurrentIndex(max(0, box.findData(current)))
+    box.setAccessibleName("Tamaño de empresa")
+    box.setToolTip("Reduce las empresas a descargar y simular. Ahorra tiempo; en el análisis de 5 años "
+                   "ningún tramo de tamaño mostró ventaja por sí solo.")
+    box.currentIndexChanged.connect(lambda _: on_change(box.currentData()))
+    return box

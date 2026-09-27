@@ -51,3 +51,20 @@ def test_bs_price_with_stop_below_zero():
 
     assert bs_price(-0.4, 1.0, 0.1, 0.04, 0.8) == 0.0          # call on a worthless stock
     assert bs_price(0.0, 1.0, 0.0, 0.04, 0.8, kind="P") == 1.0
+
+
+def test_bs_greeks_behave_like_a_call():
+    from miratrade.options_trades import bs_greeks, bs_price
+
+    g = bs_greeks(100.0, 100.0, 0.25, 0.04, 0.35)
+    assert 0.45 < g["delta"] < 0.65                       # at the money
+    assert g["theta"] < 0 and g["vega"] > 0 and g["gamma"] > 0
+    # vega: one volatility point up should raise the premium by about vega
+    bump = bs_price(100.0, 100.0, 0.25, 0.04, 0.36) - bs_price(100.0, 100.0, 0.25, 0.04, 0.35)
+    assert abs(bump - g["vega"]) < 0.02
+    # theta: a day closer to expiry costs about theta
+    decay = bs_price(100.0, 100.0, 0.25 - 1 / 365, 0.04, 0.35) - bs_price(100.0, 100.0, 0.25, 0.04, 0.35)
+    assert abs(decay - g["theta"]) < 0.01
+    deep = bs_greeks(200.0, 100.0, 0.25, 0.04, 0.35)
+    assert deep["delta"] > 0.95 and abs(deep["theta"]) < abs(g["theta"])
+    assert bs_greeks(100.0, 100.0, 0.0, 0.04, 0.35)["vega"] == 0.0

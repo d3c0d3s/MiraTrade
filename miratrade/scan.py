@@ -163,6 +163,40 @@ def matching_rules(ev: Mapping, rules: pd.DataFrame | None, variant: str) -> lis
     return [rule for rule in r.loc[ok, "rule"] if all(_true(ev, c.strip()) for c in str(rule).split("&"))]
 
 
+def contract_for(prices: pd.DataFrame, signal_date, variant: str = DEFAULT_VARIANT,
+                 cfg: Config = Config()) -> dict | None:
+    """The call the chosen profile would buy for this event: strike, expiry, premium and greeks.
+
+    **Modelled** with Black-Scholes on the stock's realised volatility, the same way the analysis
+    priced it, not a quote. ``None`` for the share profiles or when there is too little history."""
+    from dataclasses import replace
+
+    from miratrade.options_trades import bs_greeks, option_contract, realized_vol
+
+    if not variant.startswith("call") or prices is None or prices.empty:
+        return None
+    dte = int(variant[4:].split("_")[0])
+    target = int(variant.split("_")[1]) / 100
+    stop = dict(cfg.outcomes.targets).get(target, 0.25)
+    history = prices.loc[:pd.Timestamp(signal_date)]
+    if len(history) < 30:
+        return None
+    vol = float(realized_vol(history["close"]).iloc[-1])
+    spot = float(history["close"].iloc[-1])
+    if not np.isfinite(vol) or vol <= 0 or spot <= 0:
+        return None
+    params = replace(cfg.options, target_dte=dte, min_dte=dte)
+    c = option_contract(spot, history.index[-1].date(), vol, params)
+    if not np.isfinite(c["ask"]) or c["ask"] <= 0:
+        return None
+    greeks = bs_greeks(spot, c["strike"], c["t"], params.rate, c["sigma"])
+    return {"ticker": None, "strike": c["strike"], "expiry": pd.Timestamp(c["expiry"]),
+            "dte": (c["expiry"] - history.index[-1].date()).days, "spot": spot,
+            "premium": c["ask"], "cost": c["ask"] * 100, "iv": c["sigma"],
+            "in_the_money": spot / c["strike"] - 1, "target": c["ask"] * (1 + target),
+            "stop": c["ask"] * (1 - stop), "target_pct": target, "stop_pct": stop, **greeks}
+
+
 def latest_history_report(root: Path) -> Path | None:
     """Newest report folder under ``root`` (two levels deep) that has an ``events.csv``."""
     root = Path(root)
@@ -184,7 +218,8 @@ def load_history(report_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
 # --------------------------------------------------------------------------- orchestration
 
 def run_scan(days: int = 7, end: date | None = None, cfg: Config = Config(), flow_dir: Path | None = None,
-             smart_money: bool = True, log: Callable[[str], None] = print, fetch=None) -> dict:
+             smart_money: bool = True, log: Callable[[str], None] = print, fetch=None,
+             cap_tier: str | None = None) -> dict:
     """Fetch the last ``days`` of events and return ``{"events", "prices", "since", "end"}``.
 
     ``fetch`` overrides the downloads for tests: ``{"insiders": fn(start, end), "ownership":
@@ -220,10 +255,18 @@ def run_scan(days: int = 7, end: date | None = None, cfg: Config = Config(), flo
         from miratrade.signals.options_flow import unusual_prints
         u = unusual_prints(flow, cfg.flow)
         tickers |= set(u.loc[pd.to_datetime(u["date"]).dt.date >= since, "ticker"]) if "date" in u else set()
+    # Shares outstanding come before prices: the size filter then cuts the list of companies
+    # whose prices have to be downloaded, which is the slow part.
+    shares = fetch["shares"](sorted(tickers), insiders, ownership) if "shares" in fetch else None
+    tier = cap_tier or cfg.data.cap_tier
+    if tier != "all":
+        from miratrade.data.fundamentals import cap_from_filings, filter_by_tier, tier_report
+
+        tickers, stats = filter_by_tier(tickers, cap_from_filings(insiders, shares), tier)
+        log("  " + tier_report(stats, tier))
     log(f"Precios de {len(tickers)} empresas …")
     # 400 extra days: 200-day averages at the window start plus a year of chart.
     prices = fetch["prices"](sorted(tickers | {"SPY"}), since - timedelta(days=400), end + timedelta(days=1))
-    shares = fetch["shares"](sorted(tickers), insiders, ownership) if "shares" in fetch else None
     panel = build_panel(prices, insiders, flow, cfg, ownership=ownership, shares=shares)
     events = recent_events({t: p for t, p in panel.items() if t != "SPY"}, pd.Timestamp(since))
     if len(events):

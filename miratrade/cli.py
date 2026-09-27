@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 
 from miratrade.backtest import build_panel, run_trades
-from miratrade.config import Config
+from miratrade.config import CAP_TIERS, Config
 from miratrade.edge import attach_walk_forward, mine_rules, prune_redundant, scan, walk_forward
 from miratrade.regimes import regime_baseline, regime_rules
 from miratrade.report import render
@@ -86,7 +86,8 @@ def pipeline(prices: dict, insiders: pd.DataFrame, flow: pd.DataFrame, start: pd
 def load_inputs(days: int, end: date | None = None, max_insider_tickers: int = 150, max_13d_tickers: int = 100,
                 tickers: list[str] | None = None, flow_path: str | None = None, insiders_csv: str | None = None,
                 prices_dir: str | None = None, smart_money: bool = True, cfg: Config = Config(),
-                fundamentals: bool = True) -> dict:
+                fundamentals: bool = True, cap_tier: str | None = None,
+                universe_cutoff: date | None = None) -> dict:
     """Everything an analysis reads, downloaded or taken from the cache: the same inputs for
     ``analyze`` and ``experiment``."""
     from miratrade.data.options import FLOW_COLUMNS, load_flow_csv
@@ -107,6 +108,11 @@ def load_inputs(days: int, end: date | None = None, max_insider_tickers: int = 1
           f"{dropped['fund_ticker']} mutual funds, {dropped['total_as_price']} with the total typed as price")
 
     buys = insiders[(insiders["code"] == "P") & (insiders["value"] >= cfg.insider.min_value_usd)]
+    if universe_cutoff is not None:
+        # Ranking companies over the whole window would let the confirmation period pick the
+        # universe it is then judged on; only filings before the cut may choose it.
+        buys = buys[pd.to_datetime(buys["filing_date"]).dt.date < universe_cutoff]
+        print(f"  universe ranked on filings before {universe_cutoff} ({len(buys)} buys)")
     ranked = buys.assign(value=buys["value"].clip(upper=cfg.insider.rank_cap_usd))
     universe = set(ranked.groupby("ticker")["value"].sum().nlargest(max_insider_tickers).index)
     universe |= set(unusual_prints(flow, cfg.flow)["ticker"].unique())
@@ -131,25 +137,33 @@ def load_inputs(days: int, end: date | None = None, max_insider_tickers: int = 1
         # 60 extra calendar days so the short-ratio z-score has history at the window start.
         short_volume = fetch_short_volume(start - timedelta(days=60), end, tickers=universe)
 
+    shares = None
+    if fundamentals:
+        import json
+
+        from miratrade.data.fundamentals import (cap_from_filings, fetch_shares, filter_by_tier, ticker_ciks,
+                                                 tier_report)
+        from miratrade.data.sec import SecClient
+
+        client = SecClient()
+        ciks = ticker_ciks(insiders, json.loads(client.get("https://www.sec.gov/files/company_tickers.json",
+                                                           max_age_days=7)), ownership)
+        print(f"Fetching shares outstanding (SEC XBRL) for {len(universe)} tickers …")
+        shares = fetch_shares(universe, ciks, client)
+        print(f"  {shares['ticker'].nunique()} with shares outstanding (funds and some foreign filers have none)")
+        # Size filter before the prices: that is what saves the download and the simulation.
+        tier = cap_tier or cfg.data.cap_tier
+        if tier != "all":
+            universe, stats = filter_by_tier(universe - {"SPY"}, cap_from_filings(insiders, shares), tier)
+            universe |= {"SPY"}
+            print("  " + tier_report(stats, tier))
+
     if prices_dir:
         prices = load_prices_csv(Path(prices_dir))
     else:
         print(f"Loading prices for {len(universe)} tickers …")
         # 300 extra calendar days so 200-day averages exist at the window start.
         prices = load_prices(sorted(universe), start - timedelta(days=300), end + timedelta(days=1))
-    shares = None
-    if fundamentals:
-        import json
-
-        from miratrade.data.fundamentals import fetch_shares, ticker_ciks
-        from miratrade.data.sec import SecClient
-
-        client = SecClient()
-        ciks = ticker_ciks(insiders, json.loads(client.get("https://www.sec.gov/files/company_tickers.json",
-                                                           max_age_days=7)), ownership)
-        print(f"Fetching shares outstanding (SEC XBRL) for {len(prices)} tickers …")
-        shares = fetch_shares(prices, ciks, client)
-        print(f"  {shares['ticker'].nunique()} with shares outstanding (funds and some foreign filers have none)")
     return {"prices": prices, "insiders": insiders, "flow": flow, "ownership": ownership,
             "short_volume": short_volume, "shares": shares, "universe": universe, "start": start, "end": end}
 
@@ -158,7 +172,7 @@ def cmd_analyze(a) -> None:
     cfg = Config()
     inp = load_inputs(a.days, date.fromisoformat(a.end) if a.end else None, a.max_insider_tickers,
                       a.max_13d_tickers, a.tickers, a.flow, a.insiders_csv, a.prices_dir,
-                      not a.no_smart_money, cfg)
+                      not a.no_smart_money, cfg, cap_tier=a.cap)
     res = pipeline(inp["prices"], inp["insiders"], inp["flow"], pd.Timestamp(inp["start"]), Path(a.out), cfg,
                    universe=inp["universe"], ownership=inp["ownership"], short_volume=inp["short_volume"],
                    shares=inp["shares"])
@@ -172,8 +186,12 @@ def cmd_experiment(a) -> None:
     from miratrade.experiments import extract_events, report, run_grid
 
     cfg = Config()
+    end_date = date.fromisoformat(a.end) if a.end else date.today()
+    span = timedelta(days=a.days)
+    universe_cut = None if a.lookahead_universe else end_date - span + span * cfg.experiment.train_fraction
     inp = load_inputs(a.days, date.fromisoformat(a.end) if a.end else None, a.max_insider_tickers,
-                      a.max_13d_tickers, flow_path=a.flow, smart_money=not a.no_smart_money, cfg=cfg)
+                      a.max_13d_tickers, flow_path=a.flow, smart_money=not a.no_smart_money, cfg=cfg,
+                      cap_tier=a.cap, universe_cutoff=universe_cut)
     print("Building the panel …")
     panel = build_panel(inp["prices"], inp["insiders"], inp["flow"], cfg, ownership=inp["ownership"],
                         short_volume=inp["short_volume"], shares=inp["shares"])
@@ -223,7 +241,7 @@ def cmd_scan(a) -> None:
     report = Path(a.report) if a.report else latest_history_report(Path("reports"))
     history, rules = load_history(report) if report else (pd.DataFrame(), pd.DataFrame())
     res = run_scan(days=a.days, flow_dir=Path(a.flow) if a.flow else CACHE_DIR / "flow",
-                   smart_money=not a.no_smart_money)
+                   smart_money=not a.no_smart_money, cap_tier=a.cap)
     save_scan(res, Path(a.save) if a.save else APP_DIR / "scan")
     print(f"\nEvidencia: {report or 'sin reporte con events.csv'} · perfil {variant_label(a.variant)}\n")
     for ev in res["events"].to_dict("records"):
@@ -259,6 +277,8 @@ def main(argv: list[str] | None = None) -> None:
                     help="add up to this many companies with new 13D filings to the universe")
     an.add_argument("--no-smart-money", action="store_true",
                     help="skip 13D/13G and FINRA short-volume data")
+    an.add_argument("--cap", choices=list(CAP_TIERS), default=None,
+                    help="company size to keep (default: the app setting); saves download time")
     an.add_argument("--out", default="reports")
     an.set_defaults(func=cmd_analyze)
 
@@ -274,6 +294,7 @@ def main(argv: list[str] | None = None) -> None:
     sc.add_argument("--report", help="report folder with events.csv (default: newest under reports/)")
     sc.add_argument("--flow", help="options-flow CSV file or directory (default .cache/flow)")
     sc.add_argument("--no-smart-money", action="store_true", help="skip 13D/13G filings")
+    sc.add_argument("--cap", choices=list(CAP_TIERS), default=None, help="company size to keep")
     sc.add_argument("--save", help="folder for the result (default: the app's scan folder)")
     sc.set_defaults(func=cmd_scan)
 
@@ -284,6 +305,9 @@ def main(argv: list[str] | None = None) -> None:
     ex.add_argument("--max-13d-tickers", type=int, default=200)
     ex.add_argument("--flow", help="options-flow CSV file or directory")
     ex.add_argument("--no-smart-money", action="store_true")
+    ex.add_argument("--cap", choices=list(CAP_TIERS), default=None, help="company size to keep")
+    ex.add_argument("--lookahead-universe", action="store_true",
+                    help="rank the universe over the whole window (round 1 did this; it peeks)")
     ex.add_argument("--out", default="reports/5y")
     ex.set_defaults(func=cmd_experiment)
 

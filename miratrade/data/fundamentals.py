@@ -8,9 +8,12 @@ Source: the cover-page tag ``dei:EntityCommonStockSharesOutstanding`` of each 10
 from __future__ import annotations
 
 import json
-from typing import Callable
+from typing import Callable, Iterable
 
+import numpy as np
 import pandas as pd
+
+from miratrade.config import CAP_TIERS
 
 SHARES_URL = "https://data.sec.gov/api/xbrl/companyconcept/CIK{cik:010d}/dei/EntityCommonStockSharesOutstanding.json"
 SHARES_COLUMNS = ["ticker", "filed", "shares"]
@@ -69,6 +72,62 @@ def fetch_shares(tickers, ciks: dict[str, str], client, log: Callable[[str], Non
         if len(s):
             frames.append(s.assign(ticker=t))
     return pd.concat(frames, ignore_index=True)[SHARES_COLUMNS] if frames else pd.DataFrame(columns=SHARES_COLUMNS)
+
+
+def cap_from_filings(insiders: pd.DataFrame | None, shares: pd.DataFrame | None) -> pd.Series:
+    """Rough market capitalisation per ticker **without downloading any market data**: the price
+    on the latest Form 4 open-market transaction × the shares outstanding known by then. It is a
+    filing-day price, not today's, which is accurate enough to sort companies into size bands."""
+    empty = pd.Series(dtype=float)
+    if insiders is None or not len(insiders) or shares is None or shares.empty:
+        return empty
+    px = insiders[pd.to_numeric(insiders["price"], errors="coerce") > 0].copy()
+    if px.empty:
+        return empty
+    px["filing_date"] = pd.to_datetime(px["filing_date"])
+    px = px.sort_values("filing_date").drop_duplicates("ticker", keep="last")
+    known = shares.sort_values("filed")
+    out = {}
+    for r in px.itertuples():
+        hist = known[(known["ticker"] == r.ticker) & (known["filed"] <= r.filing_date)]
+        if len(hist):
+            out[r.ticker] = float(hist["shares"].iat[-1]) * float(r.price)
+    return pd.Series(out, dtype=float)
+
+
+def in_tier(cap: float | None, tier: str) -> bool:
+    """Whether ``cap`` falls in the size band ``tier``. An unknown size is only kept by "all"."""
+    low, high, _ = CAP_TIERS[tier]
+    if tier == "all":
+        return True
+    if cap is None or not np.isfinite(cap):
+        return False
+    return (low is None or cap >= low) and (high is None or cap < high)
+
+
+def filter_by_tier(tickers: Iterable[str], caps: pd.Series, tier: str) -> tuple[set[str], dict]:
+    """The tickers to keep, plus counts for the log (kept, dropped by size, dropped for having no
+    size at all) so nothing disappears silently."""
+    tickers = set(tickers)
+    if tier == "all":
+        return tickers, {"kept": len(tickers), "too_big_or_small": 0, "unknown": 0}
+    kept, unknown, off_band = set(), 0, 0
+    for t in tickers:
+        cap = caps.get(t)
+        if cap is None or not np.isfinite(cap):
+            unknown += 1
+        elif in_tier(float(cap), tier):
+            kept.add(t)
+        else:
+            off_band += 1
+    return kept, {"kept": len(kept), "too_big_or_small": off_band, "unknown": unknown}
+
+
+def tier_report(stats: dict, tier: str) -> str:
+    if tier == "all":
+        return f"Todos los tamaños: {stats['kept']} empresas."
+    return (f"Tamaño «{CAP_TIERS[tier][2]}»: {stats['kept']} empresas; "
+            f"{stats['too_big_or_small']} fuera del tramo y {stats['unknown']} sin dato de tamaño.")
 
 
 def market_cap(dates: pd.DatetimeIndex, close: pd.Series, shares: pd.DataFrame | None, ticker: str) -> pd.Series:

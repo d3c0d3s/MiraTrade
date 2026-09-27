@@ -29,6 +29,9 @@ from miratrade.config import Config
 from miratrade.options_trades import bs_price, option_contract
 from miratrade.outcomes import EVENT_TYPES
 
+# Insider quality conditions kept on each event so round 2 can pre-register hypotheses.
+QUALITY_FLAGS = ("ins:exec_buy", "ins:cluster2+", "ins:big_250k+", "trend:up")
+
 _ERF = np.frompyfunc(math.erf, 1, 1)
 
 
@@ -92,7 +95,8 @@ def extract_events(panel: dict[str, pd.DataFrame], cfg: Config = Config(), start
                 plan_only = bool(len(fresh)) and bool(fresh["plan"].all())
             rows.append({"ticker": t, "s": s, "signal_date": ind.index[s], "entry_date": ind.index[i],
                          "entry": float(opens[i]), "rv20": float(row.get("rv20", np.nan)), "atr": float(row["atr"]),
-                         "mkt_trend": row.get("mkt_trend", "unknown"), **{k: bool(cond[k]) for k in EVENT_TYPES},
+                         "mkt_trend": row.get("mkt_trend", "unknown"),
+                         **{k: bool(cond[k]) for k in (*EVENT_TYPES, *QUALITY_FLAGS)},
                          "mkt_cap": float(row.get("mkt_cap", np.nan)),
                          "buy_pct_cap": float(row["ins_buy_value"] / row["mkt_cap"])
                          if np.isfinite(row.get("mkt_cap", np.nan)) and row.get("mkt_cap", 0) > 0 else np.nan,
@@ -245,7 +249,8 @@ def run_grid(panel: dict[str, pd.DataFrame], events: pd.DataFrame, cfg: Config =
                                     res["reached30"], res["best"]))
     trades = pd.DataFrame(out, columns=["event", "instrument", "stop", "exit", "ret", "days", "reason",
                                         "reached30", "best"])
-    cols = ["ticker", "signal_date", "mkt_trend", *EVENT_TYPES, "plan_only", "issuer_kind", "mkt_cap", "buy_pct_cap"]
+    cols = ["ticker", "signal_date", "mkt_trend", *EVENT_TYPES, *QUALITY_FLAGS, "plan_only", "issuer_kind",
+            "mkt_cap", "buy_pct_cap"]
     return trades.join(events[[c for c in cols if c in events]], on="event")
 
 
@@ -309,6 +314,48 @@ def _row(label: str, s: dict, extra: str = "") -> str:
 
 def _label(key: tuple) -> str:
     return f"{key[0]}, stop {STOP_LABELS[key[1]]}, salida {EXIT_LABELS[key[2]]}"
+
+
+def hypotheses(trades: pd.DataFrame) -> list[tuple[str, pd.Series]]:
+    """Round 2, registered before looking at the results: the event quality that round 1 pointed
+    to, tested on the shares first. Few of them on purpose — every extra one costs significance."""
+    ins = trades["event:insider_buy"]
+    big = trades["buy_pct_cap"] >= 0.001
+    conviction = trades["ins:exec_buy"] | trades["ins:cluster2+"]
+    return [
+        ("H1 · solo compras de directivos", ins),
+        ("H2 · H1 y compra ≥ 0,1 % de la empresa", ins & big),
+        ("H3 · H1 y compra un ejecutivo o 2+ directivos", ins & conviction),
+        ("H4 · H1 + ≥ 0,1 % + ejecutivo o 2+ directivos", ins & big & conviction),
+    ]
+
+
+ROUND2_SETUPS = [("acción", "pct10", "fixed30"), ("acción", "pct10", "run30_chandelier"),
+                 ("call Δ0.80 120d", "pct10", "run30_chandelier")]
+
+
+def round_two(clean_trades: pd.DataFrame, cfg: Config) -> list[str]:
+    lines = ["## Ronda 2 · hipótesis registradas antes de mirar", "",
+             "Cuatro hipótesis, elegidas por lo que apuntó la ronda 1, probadas primero en la **acción**: si la "
+             "ventaja no existe ahí, la call solo la apalanca hacia abajo. El universo de empresas se eligió con "
+             "datos anteriores al corte, así que el periodo de confirmación no influyó en él.", ""]
+    for inst, stop, exit_rule in ROUND2_SETUPS:
+        subset = _cfg(clean_trades, (inst, stop, exit_rule))
+        if subset.empty:
+            continue
+        lines += [f"**{inst}** · stop {STOP_LABELS[stop]} · salida {EXIT_LABELS[exit_rule]}", "",
+                  "| hipótesis | n train | media train | n test | media test | acierto test | t test |",
+                  "|---|---|---|---|---|---|---|"]
+        for name, mask in hypotheses(subset):
+            g = subset[mask.reindex(subset.index, fill_value=False)]
+            tr, te = _s(g[g["period"] == "train"]), _s(g[g["period"] == "test"])
+            t_test = f"{te['t']:.1f}" if te.get("n") and np.isfinite(te["t"]) else "–"
+            lines.append(f"| {name} | {tr.get('n', 0)} | {_pct(tr.get('media', np.nan))} | {te.get('n', 0)} | "
+                         f"{_pct(te.get('media', np.nan))} | {_pct(te.get('acierto', np.nan), False)} | {t_test} |")
+        lines.append("")
+    lines += ["Una hipótesis solo cuenta si gana en **los dos** periodos y con suficientes casos "
+              f"(mínimo {cfg.experiment.min_n} en train).", ""]
+    return lines
 
 
 def _cfg(trades: pd.DataFrame, key: tuple) -> pd.DataFrame:
@@ -415,6 +462,8 @@ def report(trades: pd.DataFrame, events: pd.DataFrame, cfg: Config, meta: dict) 
                      f"{_pct(r.media_train)} | {n_test} | {_pct(r.media_test)} | {_pct(r.acierto_test, False)} | {t_test} |")
     both = wide[(wide["media_train"] > 0) & (wide["media_test"] > 0) & (wide["n_train"] >= e.min_n)]
     lines += ["", f"Configuraciones con media positiva en train **y** en test: **{len(both)}** de {len(wide)}.", ""]
+
+    lines += round_two(cl, cfg)
 
     if len(ranked):
         b = ranked.iloc[0]

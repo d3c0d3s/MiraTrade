@@ -31,7 +31,7 @@ class MainWindow(QMainWindow):
 
         self.pages = QStackedWidget()
         self.signals = SignalsPage(reports_dir, scan_dir, settings_path=self.settings_path)
-        self.reports = ReportsPage(reports_dir)
+        self.reports = ReportsPage(reports_dir, self.settings_path)
         self.settings = SettingsPage(self.settings_path, auth, etrade_auth)
         for w in (self.signals, practice_page(), self.reports, self.settings):
             self.pages.addWidget(w)
@@ -59,6 +59,7 @@ class MainWindow(QMainWindow):
             self.nav.addButton(b, i)
             nav_lay.addWidget(b)
         self.nav.idClicked.connect(self.pages.setCurrentIndex)
+        self.nav.idClicked.connect(self._sync_pages)
         self.nav.button(0).setChecked(True)
         nav_lay.addStretch(1)
         version = QLabel(f"v{__version__}")
@@ -101,6 +102,11 @@ class MainWindow(QMainWindow):
         central.setLayout(root)
         self.setCentralWidget(central)
         self.refresh_header()
+
+    def _sync_pages(self, _index: int = 0) -> None:
+        """The size filter is one setting shared by both screens."""
+        self.signals.refresh_cap()
+        self.reports.refresh_cap()
 
     def refresh_header(self) -> None:
         cfg = data.read_settings(self.settings_path)

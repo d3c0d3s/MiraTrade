@@ -5,6 +5,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import json
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -191,9 +192,11 @@ def test_brand_assets_load(qtbot):
 
 
 def test_scan_command_arguments(tmp_path):
-    args = data.scan_command(7, "call45_40", tmp_path / "scan", tmp_path / "rep")
+    args = data.scan_command(7, "call45_40", tmp_path / "scan", tmp_path / "rep", "mid")
     assert args[args.index("scan") + 1:] == ["--days", "7", "--variant", "call45_40", "--save",
-                                             str(tmp_path / "scan"), "--report", str(tmp_path / "rep")]
+                                             str(tmp_path / "scan"), "--cap", "mid",
+                                             "--report", str(tmp_path / "rep")]
+    assert data.analyze_command(90, tmp_path / "out", "mega")[-2:] == ["--cap", "mega"]
 
 
 def test_market_data_settings_need_consent_for_research_sources(window, monkeypatch):
@@ -212,7 +215,7 @@ def test_market_data_settings_need_consent_for_research_sources(window, monkeypa
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.Yes)
     s.save()
     saved = json.loads(s.settings_path.read_text(encoding="utf-8"))
-    assert saved["data"] == {"price_source": "research", "quote_broker": "etrade"}
+    assert saved["data"]["price_source"] == "research" and saved["data"]["quote_broker"] == "etrade"
 
 
 def test_data_folders_do_not_depend_on_the_launch_directory(tmp_path, monkeypatch):
@@ -251,9 +254,13 @@ def test_signals_banner_offers_a_way_out_when_no_broker_is_connected(window, mon
 def _scan_with(tmp_path, tickers):
     from miratrade.scan import save_scan
 
-    idx = pd.bdate_range("2026-05-01", periods=60)
-    bars = pd.DataFrame({"open": 10.0, "high": 10.5, "low": 9.5, "close": 10.2, "volume": 1e6}, index=idx)
-    events = pd.DataFrame([{"ticker": t, "signal_date": idx[-3], "close": 10.2, "event:insider_buy": True,
+    idx = pd.bdate_range("2026-01-01", periods=120)
+    # a real price path: a contract can only be modelled when the stock has some volatility
+    close = pd.Series(10 * (1.002 ** np.arange(120)) * (1 + 0.02 * np.sin(np.arange(120))), index=idx)
+    bars = pd.DataFrame({"open": close, "high": close * 1.01, "low": close * 0.99, "close": close,
+                         "volume": 1e6}, index=idx)
+    events = pd.DataFrame([{"ticker": t, "signal_date": idx[-3], "close": float(close.iloc[-3]),
+                            "event:insider_buy": True,
                             "event:flow": False, "event:13dg": False,
                             "what": f"{t}: un directivo compró"} for t in tickers])
     save_scan({"events": events, "prices": {t: bars for t in tickers}, "since": idx[-7].date(),
@@ -300,3 +307,33 @@ def test_event_card_height_follows_the_wrapped_text(qtbot):
     assert long.fit(284) > short.fit(284)
     assert short.fit(284) == short.fit(284)             # stable when measured twice
     assert long.fit(600) < long.fit(284)                # wider card, fewer lines
+
+
+def test_company_size_filter_is_shared_by_both_screens(window):
+    """One setting, two screens: choosing a size in Señales must reach Reportes and the commands."""
+    s, r = window.signals, window.reports
+    assert s.cap.currentData() == "all" and r.cap.currentData() == "all"
+    s.cap.setCurrentIndex(s.cap.findData("mid"))
+    assert json.loads(s.settings_path.read_text(encoding="utf-8"))["data"]["cap_tier"] == "mid"
+    r.refresh_cap()
+    assert r.cap.currentData() == "mid"
+    assert "--cap" in data.scan_command(7, "call45_40", s.scan_dir, None, s.cap.currentData())
+    r.cap.setCurrentIndex(r.cap.findData("mega"))                # and the other way round
+    s.refresh_cap()
+    assert s.cap.currentData() == "mega"
+
+
+def test_contract_card_shows_the_modelled_call(qtbot, tmp_path):
+    from miratrade.app.pages.signals import SignalsPage
+
+    _scan_with(tmp_path, ["ACME"])
+    page = SignalsPage(tmp_path / "reports", tmp_path / "scan", settings_path=tmp_path / "settings.json")
+    qtbot.addWidget(page)
+    card = page.contract
+    assert card.head.text().startswith("ACME") and card.head.text().endswith("C")
+    assert "días" in card.sub.text() and "$" in card.values["premium"].text()
+    assert card.values["delta"].text() not in ("", "–") and "%" in card.values["iv"].text()
+    assert "Vender en" in card.exits.text() and "stop en" in card.exits.text()
+    page.variant.setCurrentIndex(page.variant.findData("stock12m_30"))   # shares: no contract
+    assert card.head.text() == "Sin contrato" and "acción" in card.sub.text()
+    assert card.values["premium"].text() == "–"
