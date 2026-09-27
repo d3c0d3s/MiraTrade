@@ -6,9 +6,9 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-from PySide6.QtCore import QProcess, Qt, Signal
+from PySide6.QtCore import QProcess, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QPainter
-from PySide6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
+from PySide6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
                                QPlainTextEdit, QPushButton, QSizePolicy, QSpinBox, QVBoxLayout, QWidget)
 
 from miratrade.app import data, theme
@@ -26,6 +26,8 @@ CONTEXT_LABELS = {"trend:up": "Tendencia al alza (sobre sus medias de 20 y 50)",
                   "mkt:spy_above_50d": "Mercado (SPY) sobre su media de 50", "short:low": "Poca venta en corto",
                   "short:high": "Mucha venta en corto"}
 DISCLAIMER = "Análisis, no asesoramiento. Con opciones puedes perder la prima entera."
+ITEM_PADDING = 10          # keep in sync with theme.QSS: QListWidget::item padding
+SELECTED_BORDER = 1        # …and the border it gains when selected
 
 
 def _label(text: str, name: str, wrap: bool = False) -> QLabel:
@@ -69,6 +71,19 @@ class EventCard(QWidget):
         lay.addLayout(top)
         lay.addWidget(_label(str(ev.get("what", "")), "body", wrap=True))
         lay.addWidget(muted(es_date(ev["signal_date"])))
+
+    def fit(self, width: int) -> int:
+        """Lay the card out for ``width`` and return the height it really needs. Qt guesses the
+        height of a wrapped label from a fixed aspect ratio, which claims two lines for texts that
+        take one, so each wrapped label is measured at the width it will actually get."""
+        self.setFixedWidth(width)
+        margins = self.layout().contentsMargins()
+        inner = width - margins.left() - margins.right()
+        for label in self.findChildren(QLabel):
+            if label.wordWrap():
+                label.setFixedHeight(label.heightForWidth(inner))
+        self.adjustSize()
+        return self.height()
 
 
 class OutcomeBar(QWidget):
@@ -167,16 +182,26 @@ class SignalsPage(QWidget):
         b.addWidget(self.source_btn)
         self.banner.hide()
 
-        # left: events
+        # left: filter + events
+        self.filter = QLineEdit()
+        self.filter.setPlaceholderText("Filtrar por ticker")
+        self.filter.setClearButtonEnabled(True)
+        self.filter.setAccessibleName("Filtrar los eventos por ticker")
+        self.filter.textChanged.connect(self._apply_filter)
         self.count = _label("", "label")
+        head = QHBoxLayout()
+        head.setSpacing(12)
+        head.addWidget(self.filter, 1)
+        head.addWidget(self.count)
         self.list = QListWidget()
         self.list.setAccessibleName("Eventos nuevos")
+        self.list.setUniformItemSizes(False)
         self.list.currentItemChanged.connect(self._show_selected)
         self.empty = muted("Aún no hay búsqueda. Pulsa «Buscar eventos»: la primera vez descarga los Form 4 "
                            "de la SEC de esos días y puede tardar varios minutos. Todo queda en caché.")
         left = QVBoxLayout()
         left.setSpacing(10)
-        left.addWidget(self.count)
+        left.addLayout(head)
         left.addWidget(self.empty)
         left.addWidget(self.list, 1)
         left_box = QWidget()
@@ -294,7 +319,7 @@ class SignalsPage(QWidget):
                 self.empty.setText("Ningún evento nuevo en esos días. Prueba con más días.")
         else:
             self.meta.setText("Sin búsqueda todavía")
-        self.count.setText(f"{len(events)} EVENTOS" if has else "")
+        self.filter.setEnabled(has)
         for ev in events.to_dict("records"):
             item = QListWidgetItem()
             item.setData(Qt.UserRole, ev)
@@ -303,10 +328,57 @@ class SignalsPage(QWidget):
             item.setSizeHint(card.sizeHint())
             self.list.addItem(item)
             self.list.setItemWidget(item, card)
-        if has:
-            self.list.setCurrentRow(0)
-        else:
+        self._resize_cards()
+        self._apply_filter()
+        if not has:
             self._show_selected(None)
+
+    # ------------------------------------------------------------------ list layout and filter
+
+    def _resize_cards(self) -> None:
+        """Each card's height depends on how its description wraps, which is only known once the
+        list has a real width; without this, long filer names are cut off. The row must also
+        leave room for the padding and selection border the stylesheet draws around it."""
+        row = self.list.viewport().width() - 4
+        if row < 80:                                    # not laid out yet: showEvent runs this again
+            return
+        pad = ITEM_PADDING + SELECTED_BORDER
+        for i in range(self.list.count()):
+            item = self.list.item(i)
+            card = self.list.itemWidget(item)
+            if card is not None:
+                item.setSizeHint(QSize(row, card.fit(row - 2 * pad) + 2 * pad))
+
+    def _apply_filter(self, _text: str = "") -> None:
+        needle = self.filter.text().strip().upper()
+        total = self.list.count()
+        first = None
+        shown = 0
+        for i in range(total):
+            item = self.list.item(i)
+            ticker = str((item.data(Qt.UserRole) or {}).get("ticker", "")).upper()
+            match = not needle or needle in ticker
+            item.setHidden(not match)
+            if match:
+                shown += 1
+                first = first or item
+        self.count.setText("" if not total else f"{shown} DE {total}" if needle else f"{total} EVENTOS")
+        if total:
+            self.empty.setText(f"Ningún evento con «{self.filter.text().strip()}».")
+            self.empty.setVisible(shown == 0)
+        current = self.list.currentItem()
+        if first is not None and (current is None or current.isHidden()):
+            self.list.setCurrentItem(first)
+        elif first is None:
+            self._show_selected(None)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._resize_cards()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._resize_cards()
 
     def _show_selected(self, item: QListWidgetItem | None, _prev=None) -> None:
         v = self.variant.currentData()
