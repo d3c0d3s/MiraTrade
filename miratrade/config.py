@@ -196,6 +196,11 @@ class DataParams:
     # refresh re-reads today's filings, so anything shorter than MIN_AUTO_REFRESH_MINUTES would
     # spend more time asking the SEC than there is new information to find.
     auto_refresh_minutes: int = 0
+    # …and only inside this window, given in **New York** time because that is where the filings
+    # happen: EDGAR takes Form 4s from early morning until 22:00 ET, and none arrive at weekends.
+    auto_refresh_from: str = "07:00"
+    auto_refresh_to: str = "22:30"
+    auto_refresh_weekdays_only: bool = True
     # "research" = public web sources (Yahoo via yfinance, Stooq, CBOE's page). Their terms allow
     # personal, non-commercial use at most: off by default, never the default of a shipped app.
 

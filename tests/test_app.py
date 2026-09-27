@@ -386,6 +386,8 @@ def test_window_and_size_filter_without_searching_again(qtbot, tmp_path):
 def test_automatic_refresh_respects_the_floor_and_never_overlaps(window, monkeypatch):
     """A timer may repeat the download, but not faster than the floor, not while one is running,
     and not when there is nowhere to get prices from."""
+    from PySide6.QtCore import QTime
+
     from miratrade.config import MIN_AUTO_REFRESH_MINUTES
 
     s = window.settings
@@ -400,6 +402,9 @@ def test_automatic_refresh_respects_the_floor_and_never_overlaps(window, monkeyp
     assert not sig.auto.isActive()
 
     s.auto_refresh.setValue(15)
+    s.weekdays_only.setChecked(False)                           # a window that is always open,
+    s.window_from.setTime(QTime(0, 0))                          # so this test is about the other
+    s.window_to.setTime(QTime(23, 59))                          # rules, not about today's date
     s.save()
     assert sig.auto.isActive() and sig.auto.interval() == 15 * 60_000
     assert "automático cada 15 min" in sig.scan_btn.text()
@@ -416,6 +421,14 @@ def test_automatic_refresh_respects_the_floor_and_never_overlaps(window, monkeyp
     sig.scan_btn.setEnabled(False)                              # no price source
     sig._tick()
     assert started == [1]
+
+    s.window_from.setTime(QTime(3, 0))                          # a window that excludes now
+    s.window_to.setTime(QTime(3, 1))
+    s.save()
+    assert not sig.in_refresh_window()
+    sig.scan_btn.setEnabled(True)
+    sig._tick()
+    assert started == [1] and "en pausa" in sig.scan_btn.text()
 
     s.auto_refresh.setValue(0)
     s.save()

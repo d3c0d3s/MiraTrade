@@ -5,9 +5,10 @@ import webbrowser
 from pathlib import Path
 
 from PySide6.QtCore import Signal
+from PySide6.QtCore import QTime
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QGridLayout,
                                QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea,
-                               QSpinBox, QVBoxLayout, QWidget)
+                               QSpinBox, QTimeEdit, QVBoxLayout, QWidget)
 
 from miratrade.app import data
 from miratrade.config import MIN_AUTO_REFRESH_MINUTES
@@ -107,6 +108,29 @@ class SettingsPage(QWidget):
         src_form.addRow("Cotizaciones y opciones", self.quote_broker)
         src_form.addRow("Cada descarga trae", self.scan_days)
         src_form.addRow("Actualizar solo", self.auto_refresh)
+        self.window_from = QTimeEdit(QTime.fromString(self.cfg.data.auto_refresh_from, "HH:mm"))
+        self.window_to = QTimeEdit(QTime.fromString(self.cfg.data.auto_refresh_to, "HH:mm"))
+        for w in (self.window_from, self.window_to):
+            w.setDisplayFormat("HH:mm")
+        self.window_from.setAccessibleName("La franja empieza a esta hora de Nueva York")
+        self.window_to.setAccessibleName("La franja termina a esta hora de Nueva York")
+        self.weekdays_only = QCheckBox("Solo de lunes a viernes")
+        self.weekdays_only.setChecked(self.cfg.data.auto_refresh_weekdays_only)
+        window_row = QHBoxLayout()
+        window_row.setContentsMargins(0, 0, 0, 0)
+        window_row.addWidget(self.window_from)
+        window_row.addWidget(QLabel("a"))
+        window_row.addWidget(self.window_to)
+        window_row.addWidget(self.weekdays_only)
+        window_row.addStretch(1)
+        window_w = QWidget()
+        window_w.setLayout(window_row)
+        src_form.addRow("Franja (Nueva York)", window_w)
+        self.window_note = muted("")
+        src_form.addRow("", self.window_note)
+        for w in (self.window_from, self.window_to):
+            w.timeChanged.connect(self._window_changed)
+        self._window_changed()
         src_w = QWidget()
         src_w.setLayout(src_form)
         market = card(src_w, self.source_note,
@@ -292,6 +316,23 @@ class SettingsPage(QWidget):
 
     # ------------------------------------------------------------------ market data and E*TRADE
 
+    def _window_changed(self, *_) -> None:
+        """Say what the New York window is on this computer's clock, so nobody has to guess."""
+        from datetime import datetime
+
+        import pandas as pd
+
+        from miratrade.scan import new_york_time
+
+        now = pd.Timestamp.now(tz="UTC")
+        shift = datetime.now().astimezone().utcoffset() - new_york_time(now).utcoffset()
+
+        def here(value: str) -> str:
+            return (pd.Timestamp("2000-01-01 " + value) + shift).strftime("%H:%M")
+
+        self.window_note.setText(f"En tu reloj: de {here(self.window_from.time().toString('HH:mm'))} "
+                                 f"a {here(self.window_to.time().toString('HH:mm'))}.")
+
     def _source_changed(self, *_):
         key = self.price_source.currentData()
         self.source_note.setText(SOURCE_NOTE.get(key, ""))
@@ -398,6 +439,9 @@ class SettingsPage(QWidget):
         self.cfg.data.quote_broker = self.quote_broker.currentData()
         self.cfg.data.scan_days = self.scan_days.value()
         self.cfg.data.auto_refresh_minutes = self.auto_refresh.value()
+        self.cfg.data.auto_refresh_from = self.window_from.time().toString("HH:mm")
+        self.cfg.data.auto_refresh_to = self.window_to.time().toString("HH:mm")
+        self.cfg.data.auto_refresh_weekdays_only = self.weekdays_only.isChecked()
         if r.risk_per_trade_pct > r.risk_warn_pct:
             QMessageBox.warning(self, "Riesgo", "El riesgo por operación no puede superar el techo.")
             return

@@ -187,3 +187,27 @@ def test_filters_are_views_over_what_was_already_downloaded():
     from datetime import date
     assert covered_days({"since": date(2026, 9, 1), "end": date(2026, 9, 26)}) == 25
     assert covered_days(None) == 0 and covered_days({"since": None, "end": None}) == 0
+
+
+def test_the_refresh_window_is_new_york_time():
+    """Filings arrive on New York business days: the window is stated there, not in local time."""
+    from miratrade.scan import new_york_time, within_window
+
+    # 14:00 UTC on a Tuesday is 10:00 in New York, inside a 07:00-22:30 window
+    assert within_window(pd.Timestamp("2026-09-29 14:00", tz="UTC"))
+    # 03:00 UTC is 23:00 the previous evening in New York: past 22:30
+    assert not within_window(pd.Timestamp("2026-09-30 03:00", tz="UTC"))
+    # 10:00 UTC is 06:00 in New York: before it opens
+    assert not within_window(pd.Timestamp("2026-09-29 10:00", tz="UTC"))
+    # Saturday in New York
+    assert not within_window(pd.Timestamp("2026-10-03 14:00", tz="UTC"))
+    assert within_window(pd.Timestamp("2026-10-03 14:00", tz="UTC"), weekdays_only=False)
+
+    assert within_window(pd.Timestamp("2026-09-29 14:00"))              # naive is read as UTC
+    # a window that crosses midnight still works: 23:00 in New York is inside 22:00 -> 02:00
+    assert within_window(pd.Timestamp("2026-09-30 03:00", tz="UTC"), start="22:00", end="02:00")
+    assert not within_window(pd.Timestamp("2026-09-29 14:00", tz="UTC"), start="22:00", end="02:00")
+    assert within_window(pd.Timestamp("2026-09-30 03:00", tz="UTC"), start="20:00", end="23:30")
+    assert within_window(pd.Timestamp("2026-09-29 14:00", tz="UTC"), start="mal", end="peor")
+
+    assert new_york_time(pd.Timestamp("2026-09-29 14:00", tz="UTC")).hour == 10

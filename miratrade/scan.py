@@ -85,6 +85,31 @@ def filter_events(events: pd.DataFrame, days: int | None = None, cap_tier: str =
     return out
 
 
+def within_window(now, start: str = "07:00", end: str = "22:30", weekdays_only: bool = True) -> bool:
+    """Whether ``now`` falls inside a window given in **New York** time. Form 4s are filed to
+    EDGAR on business days until about 22:00 there, so outside that there is nothing new to find
+    and a repeated download would only spend the SEC's allowance."""
+    from datetime import time as _time
+
+    ts = pd.Timestamp(now)
+    ts = ts.tz_localize("UTC") if ts.tzinfo is None else ts
+    east = ts.tz_convert("America/New_York")
+    if weekdays_only and east.weekday() >= 5:
+        return False
+    try:
+        first, last = _time.fromisoformat(start), _time.fromisoformat(end)
+    except ValueError:
+        return True                              # an unreadable window must not silence the timer
+    moment = east.time()
+    return first <= moment <= last if first <= last else (moment >= first or moment <= last)
+
+
+def new_york_time(now=None) -> pd.Timestamp:
+    ts = pd.Timestamp(now if now is not None else pd.Timestamp.now(tz="UTC"))
+    ts = ts.tz_localize("UTC") if ts.tzinfo is None else ts
+    return ts.tz_convert("America/New_York")
+
+
 def covered_days(scan: Mapping | None) -> int:
     """How many days the saved scan actually downloaded, so the screen can say when a filter is
     asking for more than there is."""

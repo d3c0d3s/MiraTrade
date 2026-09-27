@@ -20,7 +20,7 @@ from miratrade.config import MIN_AUTO_REFRESH_MINUTES, Config
 from miratrade.outcomes import EVENT_TYPES, variants
 from miratrade.scan import (CONDITION_LABELS, DEFAULT_VARIANT, EVENT_LABELS, contract_for, covered_days,
                             evidence, filter_events, latest_history_report, load_history, load_scan,
-                            variant_label)
+                            variant_label, within_window)
 
 CONTEXT_LABELS = {"trend:up": "Tendencia al alza (sobre sus medias de 20 y 50)",
                   "trend:above_200": "Por encima de su media de 200 sesiones",
@@ -388,11 +388,17 @@ class SignalsPage(QWidget):
             self.cap.setCurrentIndex(max(0, self.cap.findData(tier)))
             self.cap.blockSignals(False)
 
+    def in_refresh_window(self) -> bool:
+        """Whether the clock is inside the New York window where filings actually arrive."""
+        d = data.read_settings(self.settings_path).data
+        return within_window(pd.Timestamp.now(tz="UTC"), d.auto_refresh_from, d.auto_refresh_to,
+                             d.auto_refresh_weekdays_only)
+
     def _tick(self) -> None:
-        """One turn of the automatic refresh. It only ever starts a download when the last one has
-        finished and there is somewhere to get prices from, so a slow scan or a disconnected broker
-        cannot pile runs on top of each other."""
-        if self.proc is None and self.scan_btn.isEnabled():
+        """One turn of the automatic refresh. It starts a download only when the last one has
+        finished, there is somewhere to get prices from, and New York is still filing — outside
+        that there is nothing new to find."""
+        if self.proc is None and self.scan_btn.isEnabled() and self.in_refresh_window():
             self.start_scan()
 
     def refresh_auto(self) -> None:
@@ -414,9 +420,15 @@ class SignalsPage(QWidget):
         except Exception as e:
             ok, why = False, f"No se pudo comprobar la fuente de precios: {e}"
         self.banner.setVisible(not ok)
-        minutes = data.read_settings(self.settings_path).data.auto_refresh_minutes
-        self.scan_btn.setText("Actualizar datos" if not self.auto.isActive()
-                              else f"Actualizar datos · automático cada {minutes} min")
+        d = data.read_settings(self.settings_path).data
+        if not self.auto.isActive():
+            self.scan_btn.setText("Actualizar datos")
+        elif self.in_refresh_window():
+            self.scan_btn.setText(f"Actualizar datos · automático cada {d.auto_refresh_minutes} min")
+        else:
+            self.scan_btn.setText("Actualizar datos · automático en pausa")
+            self.scan_btn.setToolTip(f"Fuera de la franja {d.auto_refresh_from}–{d.auto_refresh_to} de "
+                                     "Nueva York. Puedes pulsarlo igualmente.")
         self.source_msg.setText(why + " Sin precios, la búsqueda no puede empezar.")
         self.scan_btn.setEnabled(ok and self.proc is None)
         self.scan_btn.setToolTip("" if ok else why)

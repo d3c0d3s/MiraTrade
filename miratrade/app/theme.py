@@ -62,9 +62,11 @@ QPushButton#navButton {{ text-align: left; min-height: 44px; border: none; backg
 QPushButton#navButton:hover {{ background: #161B24; color: {TEXT}; }}
 QPushButton#navButton:checked {{ background: #18213A; color: {TEXT}; }}
 QFrame#card {{ background: {PANEL}; border: 1px solid {BORDER}; border-radius: 12px; }}
-QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{ min-height: 40px; padding: 0 10px; border-radius: 8px;
+QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QTimeEdit, QDateTimeEdit {{ min-height: 40px;
+    padding: 0 10px; border-radius: 8px;
     border: 1px solid {BORDER_2}; background: {BG}; font-family: {MONO}; }}
-QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {{ border-color: {ACCENT}; }}
+QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTimeEdit:focus {{ border-color: {ACCENT}; }}
+QTimeEdit, QDateTimeEdit {{ font-family: {MONO}; max-width: 90px; }}
 QCheckBox {{ spacing: 10px; }}
 QAbstractSpinBox::up-button, QAbstractSpinBox::down-button {{ width: 0; border: none; }}
 QListWidget, QTableView, QTextBrowser, QPlainTextEdit {{ background: {PANEL}; border: 1px solid {BORDER};
