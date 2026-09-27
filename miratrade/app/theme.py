@@ -39,6 +39,8 @@ QLabel#price {{ font-family: {MONO}; font-size: 18px; }}
 QLabel#label {{ color: {TEXT_2}; font-size: 12px; font-weight: 600; letter-spacing: 0.5px; }}
 QLabel#body {{ color: {TEXT_BODY}; font-size: 14px; }}
 QFrame#evidence {{ background: {PANEL_2}; border: 1px solid {BORDER}; border-radius: 10px; }}
+QFrame#banner {{ background: {DANGER_BG}; border: 1px solid {DANGER_BORDER}; border-radius: 10px; }}
+QFrame#banner QLabel {{ color: #FFD2CC; }}
 QWidget#side {{ background: {PANEL}; border-left: 1px solid {BORDER}; }}
 QLabel#h1 {{ font-size: 20px; font-weight: 600; }}
 QLabel#h2 {{ font-size: 16px; font-weight: 600; }}

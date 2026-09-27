@@ -1,5 +1,6 @@
 """Recent-event scan and the evidence lookup behind the Señales screen."""
 import pandas as pd
+import pytest
 
 from miratrade.data.ownership import OWNERSHIP_COLUMNS
 from miratrade.scan import (Evidence, evidence, load_scan, matching_rules, run_scan, save_scan,
@@ -91,3 +92,17 @@ def test_saved_scan_round_trip(tmp_path):
     t = res["events"]["ticker"].iat[0]
     assert len(back["prices"][t]) == len(res["prices"][t])
     assert load_scan(tmp_path / "missing") is None
+
+
+def test_scan_checks_the_price_source_before_downloading(monkeypatch):
+    """Without prices the scan must stop at once, not after minutes of SEC downloads."""
+    import miratrade.data.prices as prices
+    from miratrade.data.prices import PriceSourceError
+    from miratrade.scan import run_scan
+
+    called = []
+    monkeypatch.setattr(prices, "source_ready", lambda source=None: (False, "Schwab: falta iniciar sesión."))
+    monkeypatch.setattr("miratrade.scan._default_fetchers", lambda log: called.append(1) or {})
+    with pytest.raises(PriceSourceError, match="Configuración"):
+        run_scan(days=7, log=lambda m: None)
+    assert called == []                                    # nothing was downloaded

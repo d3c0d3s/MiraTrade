@@ -230,3 +230,19 @@ def test_data_folders_do_not_depend_on_the_launch_directory(tmp_path, monkeypatc
     code = "from miratrade.config import data_dir; print(data_dir('MIRATRADE_REPORTS', 'reports'))"
     out = subprocess.run([sys.executable, "-c", code], cwd=tmp_path, capture_output=True, text=True, check=True)
     assert out.stdout.strip() == str(tmp_path / "otros")            # the variable still wins
+
+
+def test_signals_banner_offers_a_way_out_when_no_broker_is_connected(window, monkeypatch):
+    """Schwab not approved yet: say so before any download and let one click switch sources."""
+    from PySide6.QtWidgets import QMessageBox
+
+    s = window.signals
+    assert not s.banner.isHidden() and not s.scan_btn.isEnabled()
+    assert "Schwab" in s.source_msg.text()
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.No)
+    s.research_btn.click()
+    assert not s.scan_btn.isEnabled()                       # declined: still blocked
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.Yes)
+    s.research_btn.click()
+    assert s.banner.isHidden() and s.scan_btn.isEnabled()   # now a scan can run
+    assert json.loads(window.settings.settings_path.read_text(encoding="utf-8"))["data"]["price_source"] == "research"

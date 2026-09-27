@@ -192,7 +192,16 @@ def run_scan(days: int = 7, end: date | None = None, cfg: Config = Config(), flo
     end = end or date.today()
     since = end - timedelta(days=days)
     look = max(cfg.insider.lookback_days, cfg.smart.lookback_days)
-    fetch = fetch or _default_fetchers(log)
+    if fetch is None:
+        # Check the price source FIRST: the SEC download below takes minutes, and finding out
+        # afterwards that there are no prices wastes all of it.
+        from miratrade.data.prices import FIX_HINT, PriceSourceError, source_ready
+
+        ok, why = source_ready()
+        if not ok:
+            raise PriceSourceError(f"{why} {FIX_HINT}")
+        log(why)
+        fetch = _default_fetchers(log)
 
     log(f"Compras de directivos (Form 4) {since} → {end} …")
     insiders = fetch["insiders"](since - timedelta(days=look), end)

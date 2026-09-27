@@ -54,6 +54,10 @@ class EtradeKeysDialog(QDialog):
         form.addRow(buttons)
 
 
+RESEARCH_WARNING = (
+    "Yahoo y Stooq no tienen un acuerdo de licencia con MiraTrade: sus datos sirven solo para tu "
+    "investigación personal y no comercial. ¿Usarlos para tus análisis?")
+
 SOURCE_NOTE = {
     "schwab": "Historial diario desde tu propia cuenta de Schwab, con tu app de desarrollador personal.",
     "research": "Yahoo / Stooq sin acuerdo de licencia: solo para tu investigación personal y no comercial. "
@@ -331,6 +335,19 @@ class SettingsPage(QWidget):
         self.etrade.logout()
         self.refresh_etrade()
 
+    def enable_research_source(self) -> bool:
+        """Switch the price history to the public web sources, with the same warning as saving.
+        Used by the Señales banner while a broker account is not connected yet."""
+        if QMessageBox.warning(self, "Webs públicas", RESEARCH_WARNING,
+                               QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+            return False
+        self.price_source.setCurrentIndex(self.price_source.findData("research"))
+        self.cfg.data.price_source = "research"
+        data.write_settings(self.cfg, self.settings_path)
+        self.saved.setText("Guardado.")
+        self.settings_changed.emit()
+        return True
+
     # ------------------------------------------------------------------ settings
 
     def _confirm_live(self, on: bool) -> None:
@@ -356,11 +373,8 @@ class SettingsPage(QWidget):
         r.max_positions = self.max_positions.value()
         self.cfg.broker.live_trading = self.live.isChecked()
         if self.price_source.currentData() == "research" and self.cfg.data.price_source != "research":
-            answer = QMessageBox.warning(
-                self, "Webs públicas",
-                "Yahoo y Stooq no tienen un acuerdo de licencia con MiraTrade: sus datos sirven solo para tu "
-                "investigación personal y no comercial. ¿Usarlos para tus análisis?",
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            answer = QMessageBox.warning(self, "Webs públicas", RESEARCH_WARNING,
+                                         QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             if answer != QMessageBox.Yes:
                 self.price_source.setCurrentIndex(self.price_source.findData(self.cfg.data.price_source))
         self.cfg.data.price_source = self.price_source.currentData()

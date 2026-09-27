@@ -30,12 +30,15 @@ class MainWindow(QMainWindow):
         self.pool = QThreadPool.globalInstance()
 
         self.pages = QStackedWidget()
-        self.signals = SignalsPage(reports_dir, scan_dir)
+        self.signals = SignalsPage(reports_dir, scan_dir, settings_path=self.settings_path)
         self.reports = ReportsPage(reports_dir)
         self.settings = SettingsPage(self.settings_path, auth, etrade_auth)
         for w in (self.signals, practice_page(), self.reports, self.settings):
             self.pages.addWidget(w)
         self.settings.settings_changed.connect(self.refresh_header)
+        self.settings.settings_changed.connect(self.signals.refresh_source)   # source may have changed
+        self.signals.open_settings.connect(lambda: self.nav.button(3).click())
+        self.signals.use_research.connect(self.settings.enable_research_source)
         self.reports.report_finished.connect(lambda _path: self.signals.refresh())   # fresher evidence
 
         # navigation

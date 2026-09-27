@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-from PySide6.QtCore import QProcess, Qt
+from PySide6.QtCore import QProcess, Qt, Signal
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
                                QPlainTextEdit, QPushButton, QSizePolicy, QSpinBox, QVBoxLayout, QWidget)
@@ -98,12 +98,17 @@ class OutcomeBar(QWidget):
 
 
 class SignalsPage(QWidget):
-    def __init__(self, reports_dir: Path | None = None, scan_dir: Path | None = None, cfg: Config = Config()):
+    open_settings = Signal()
+    use_research = Signal()
+
+    def __init__(self, reports_dir: Path | None = None, scan_dir: Path | None = None, cfg: Config = Config(),
+                 settings_path: Path | None = None):
         super().__init__()
         self.setObjectName("page")
         self.cfg = cfg
         self.reports_dir = Path(reports_dir or data.REPORTS_DIR)
         self.scan_dir = Path(scan_dir or data.SCAN_DIR)
+        self.settings_path = Path(settings_path or data.SETTINGS_PATH)
         self.proc: QProcess | None = None
         self.scan: dict | None = None
         self.history = self.rules = pd.DataFrame()
@@ -143,6 +148,24 @@ class SignalsPage(QWidget):
         self.log.setReadOnly(True)
         self.log.setMaximumHeight(120)
         self.log.hide()
+
+        # Data-source banner: says up front whether a scan can even get prices.
+        self.source_msg = _label("", "body", wrap=True)
+        self.source_btn = QPushButton("Abrir Configuración")
+        self.source_btn.clicked.connect(self.open_settings.emit)
+        self.research_btn = QPushButton("Usar webs públicas")
+        self.research_btn.setToolTip("Yahoo / Stooq, solo para tu investigación personal, mientras no tengas "
+                                     "conectada una cuenta de bróker.")
+        self.research_btn.clicked.connect(self.use_research.emit)
+        self.banner = QFrame()
+        self.banner.setObjectName("banner")
+        b = QHBoxLayout(self.banner)
+        b.setContentsMargins(14, 10, 14, 10)
+        b.setSpacing(12)
+        b.addWidget(self.source_msg, 1)
+        b.addWidget(self.research_btn)
+        b.addWidget(self.source_btn)
+        self.banner.hide()
 
         # left: events
         self.count = _label("", "label")
@@ -223,6 +246,7 @@ class SignalsPage(QWidget):
         top = QVBoxLayout()
         top.setContentsMargins(0, 0, 24, 0)
         top.addLayout(bar)
+        top.addWidget(self.banner)
         top.addWidget(self.log)
         root.addLayout(top)
         row = QHBoxLayout()
@@ -238,7 +262,22 @@ class SignalsPage(QWidget):
 
     # ------------------------------------------------------------------ data
 
+    def refresh_source(self) -> None:
+        """Whether a scan could get prices right now (checked without downloading anything)."""
+        from miratrade.data.prices import source_ready
+
+        try:
+            # the source this app is configured with, not whatever the default settings file says
+            ok, why = source_ready(data.read_settings(self.settings_path).data.price_source)
+        except Exception as e:
+            ok, why = False, f"No se pudo comprobar la fuente de precios: {e}"
+        self.banner.setVisible(not ok)
+        self.source_msg.setText(why + " Sin precios, la búsqueda no puede empezar.")
+        self.scan_btn.setEnabled(ok and self.proc is None)
+        self.scan_btn.setToolTip("" if ok else why)
+
     def refresh(self) -> None:
+        self.refresh_source()
         self.report = latest_history_report(self.reports_dir)
         self.history, self.rules = load_history(self.report) if self.report else (pd.DataFrame(), pd.DataFrame())
         self.scan = load_scan(self.scan_dir)
@@ -333,6 +372,7 @@ class SignalsPage(QWidget):
     def _finished(self, code: int) -> None:
         self.proc = None
         self.scan_btn.setEnabled(True)
+        self.refresh_source()
         self.cancel_btn.hide()
         if code == 0:
             self.log.hide()

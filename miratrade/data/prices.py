@@ -62,19 +62,41 @@ def research_fetch(ticker: str, start: date, end: date) -> pd.DataFrame | None:
     return df if df is not None else _from_stooq(ticker, start, end)
 
 
+FIX_HINT = ("Conéctala en Configuración (o con `miratrade schwab setup` y `miratrade schwab login`). Solo para "
+            "tu investigación personal puedes elegir la fuente «Webs públicas» en Configuración.")
+
+
+def source_ready(source: str | None = None) -> tuple[bool, str]:
+    """Whether the chosen price source could download right now, **without downloading anything**,
+    so a long run can stop before it starts instead of after."""
+    source = _source(source)
+    if source == "research":
+        return True, "Precios de webs públicas (Yahoo / Stooq): solo para tu investigación personal."
+    try:
+        from miratrade.brokers.schwab import SchwabAuth, hours_until_relogin
+
+        auth = SchwabAuth()
+        if not auth.configured():
+            return False, "Los precios vienen de tu cuenta de Schwab y faltan las credenciales de tu app."
+        hours = hours_until_relogin(auth)
+        if hours is None:
+            return False, "Los precios vienen de tu cuenta de Schwab y falta iniciar sesión."
+        if hours <= 0:
+            return False, "Los precios vienen de tu cuenta de Schwab y la sesión caducó."
+        return True, f"Precios de tu cuenta de Schwab (sesión válida {hours / 24:.1f} días más)."
+    except Exception as e:                       # keyring unavailable, schwab-py missing…
+        return False, f"No se pudo comprobar la sesión de Schwab: {e}."
+
+
 def schwab_fetcher(broker=None) -> Callable[[str, date, date], pd.DataFrame | None]:
     """Daily bars from the user's Schwab account; raises ``PriceSourceError`` when not connected."""
-    from miratrade.brokers.schwab import SchwabAuth, SchwabBroker, hours_until_relogin
+    from miratrade.brokers.schwab import SchwabAuth, SchwabBroker
 
     if broker is None:
-        auth = SchwabAuth()
-        hours = hours_until_relogin(auth) if auth.configured() else None
-        if not auth.configured() or hours is None or hours <= 0:
-            raise PriceSourceError(
-                "Los precios vienen de tu cuenta de Schwab y no hay una sesión activa. Conéctala en "
-                "Configuración (o con `miratrade schwab setup` y `miratrade schwab login`). Solo para tu "
-                "investigación personal puedes elegir la fuente «Webs públicas» en Configuración.")
-        broker = SchwabBroker(auth=auth)
+        ok, why = source_ready("schwab")
+        if not ok:
+            raise PriceSourceError(f"{why} {FIX_HINT}")
+        broker = SchwabBroker(auth=SchwabAuth())
     last = [0.0]
 
     def fetch(ticker: str, start: date, end: date) -> pd.DataFrame | None:
