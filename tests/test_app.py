@@ -503,3 +503,30 @@ def load_practice(path):
     from miratrade.practice import load
 
     return load(path)
+
+
+def test_practice_says_which_balance_it_sized_on(window, monkeypatch, tmp_path):
+    """Sizing on an invented account when a real one is connected would mislead, so the screen
+    names the money it used and where it came from."""
+    from miratrade.brokers.base import Account
+    from miratrade.practice import DEFAULT_EQUITY
+
+    prac = window.practice
+    prac.path = tmp_path / "practice.json"
+
+    monkeypatch.setattr(data, "quote_broker", lambda path=None: None)
+    prac.reload()
+    assert prac.equity == DEFAULT_EQUITY and prac.equity_source == "default"
+    assert "sin bróker conectado" in prac.totals.text()
+
+    class Broker:
+        name = "etrade"
+
+        def accounts(self):
+            return [Account(number_masked="…1", account_hash="h", equity=8_000.0, cash=0.0,
+                            buying_power=0.0)]
+
+    monkeypatch.setattr(data, "quote_broker", lambda path=None: Broker())
+    prac.reload()
+    assert prac.equity == 8_000.0 and prac.equity_source == "etrade"
+    assert "E*TRADE" in prac.totals.text() and "8.000,00 $" in prac.totals.text()

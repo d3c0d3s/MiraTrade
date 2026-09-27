@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, 
                                QSpinBox, QTimeEdit, QVBoxLayout, QWidget)
 
 from miratrade.app import data
+from miratrade.app.i18n import LANGUAGES, t
 from miratrade.config import MIN_AUTO_REFRESH_MINUTES
 from miratrade.app.widgets import card, muted
 
@@ -128,6 +129,12 @@ class SettingsPage(QWidget):
         src_form.addRow("Franja (Nueva York)", window_w)
         self.window_note = muted("")
         src_form.addRow("", self.window_note)
+        self.language = QComboBox()
+        for code, name in LANGUAGES.items():
+            self.language.addItem(name, code)
+        self.language.setCurrentIndex(max(0, self.language.findData(self.cfg.ui.language)))
+        self.language.setAccessibleName(t("Interface language"))
+        src_form.addRow(t("Language"), self.language)
         for w in (self.window_from, self.window_to):
             w.timeChanged.connect(self._window_changed)
         self._window_changed()
@@ -402,7 +409,7 @@ class SettingsPage(QWidget):
         self.price_source.setCurrentIndex(self.price_source.findData("research"))
         self.cfg.data.price_source = "research"
         data.write_settings(self.cfg, self.settings_path)
-        self.saved.setText("Guardado.")
+        self.saved.setText(t("Saved."))
         self.settings_changed.emit()
         return True
 
@@ -442,9 +449,15 @@ class SettingsPage(QWidget):
         self.cfg.data.auto_refresh_from = self.window_from.time().toString("HH:mm")
         self.cfg.data.auto_refresh_to = self.window_to.time().toString("HH:mm")
         self.cfg.data.auto_refresh_weekdays_only = self.weekdays_only.isChecked()
+        language_changed = self.language.currentData() != self.cfg.ui.language
+        self.cfg.ui.language = self.language.currentData()
         if r.risk_per_trade_pct > r.risk_warn_pct:
             QMessageBox.warning(self, "Riesgo", "El riesgo por operación no puede superar el techo.")
             return
         data.write_settings(self.cfg, self.settings_path)
-        self.saved.setText("Guardado.")
+        self.saved.setText(t("Saved."))
+        if language_changed:
+            QMessageBox.information(self, t("Language"),
+                                    t("Close and open MiraTrade to see it in {name}.",
+                                      name=LANGUAGES[self.cfg.ui.language]))
         self.settings_changed.emit()

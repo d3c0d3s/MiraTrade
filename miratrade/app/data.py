@@ -105,7 +105,8 @@ def write_settings(cfg: Config, path: Path = SETTINGS_PATH) -> None:
     """Save the user-editable sections; re-read to make sure the file is valid."""
     from dataclasses import asdict
 
-    data = {"risk": asdict(cfg.risk), "broker": asdict(cfg.broker), "data": asdict(cfg.data)}
+    data = {"risk": asdict(cfg.risk), "broker": asdict(cfg.broker), "data": asdict(cfg.data),
+            "ui": asdict(cfg.ui)}
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -125,6 +126,23 @@ def scan_command(days: int, variant: str, save: Path, report: Path | None = None
     return ["-X", "utf8", "-W", "ignore", "-m", "miratrade.cli", "scan", "--days", str(days),
             "--variant", variant, "--save", str(save), "--cap", cap,
             *(["--report", str(report)] if report else [])]
+
+
+def quote_broker(path: Path = SETTINGS_PATH):
+    """The broker the settings point at, or ``None`` when it cannot be reached. Read-only use:
+    balances and positions, never orders."""
+    name = read_settings(path).data.quote_broker
+    try:
+        if name == "etrade":
+            from miratrade.brokers.etrade import EtradeBroker
+
+            return EtradeBroker()
+        from miratrade.brokers.schwab import SchwabBroker, hours_until_relogin
+
+        auth_ok = SchwabBroker().auth
+        return SchwabBroker() if (hours_until_relogin(auth_ok) or 0) > 0 else None
+    except Exception:                     # not configured, not logged in, extra not installed
+        return None
 
 
 def set_cap_tier(tier: str, path: Path = SETTINGS_PATH) -> None:

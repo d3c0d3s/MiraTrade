@@ -184,6 +184,12 @@ CAP_TIERS: dict[str, tuple[float | None, float | None, str]] = {
 
 
 @dataclass
+class UiParams:
+    """How the app presents itself. English is the source language of every screen."""
+    language: str = "en"
+
+
+@dataclass
 class DataParams:
     """Where market data comes from. Every user connects their OWN broker account, under that
     broker's personal-use API terms; MiraTrade never redistributes one user's data to another."""
@@ -220,6 +226,7 @@ class Config:
     risk: RiskParams = field(default_factory=RiskParams)
     broker: BrokerParams = field(default_factory=BrokerParams)
     data: DataParams = field(default_factory=DataParams)
+    ui: UiParams = field(default_factory=UiParams)
 
 
 def load_user_config(path: Path | None = None) -> Config:

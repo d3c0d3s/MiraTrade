@@ -221,3 +221,27 @@ def equity_curve(trades: list[PaperTrade], start_equity: float) -> tuple[list[st
         dates.append(t.closed)
         values.append(running)
     return dates, values
+
+
+DEFAULT_EQUITY = 25_000.0
+
+
+def equity_from_accounts(accounts) -> float | None:
+    """Total equity across the broker's accounts, or ``None`` when none of them reports it."""
+    values = [a.equity for a in (accounts or []) if getattr(a, "equity", None) is not None]
+    return float(sum(values)) if values else None
+
+
+def account_equity(broker=None, fallback: float = DEFAULT_EQUITY) -> tuple[float, str]:
+    """The money practice sizes positions with: the connected broker's real equity when it can be
+    read, otherwise a fixed amount. Returns the value and where it came from, because sizing on a
+    number the user did not expect is worse than sizing on a stated default."""
+    if broker is None:
+        return fallback, "default"
+    try:
+        equity = equity_from_accounts(broker.accounts())
+    except Exception:
+        return fallback, "unreachable"
+    if equity is None or equity <= 0:
+        return fallback, "unreadable"
+    return equity, broker.name

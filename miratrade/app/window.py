@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (QButtonGroup, QHBoxLayout, QLabel, QMainWindow, Q
 
 from miratrade import __version__
 from miratrade.app import data
+from miratrade.app.i18n import t
 from miratrade.app.brand import app_icon, nav_brand
 from miratrade.app.pages.practice import PracticePage
 from miratrade.app.pages.signals import SignalsPage
@@ -16,7 +17,7 @@ from miratrade.app.pages.reports import ReportsPage
 from miratrade.app.pages.settings import SettingsPage
 from miratrade.app.widgets import Worker
 
-PAGES = ("Señales", "Práctica", "Reportes", "Configuración")
+PAGES = ("Signals", "Practice", "Reports", "Settings")
 
 
 class MainWindow(QMainWindow):
@@ -54,10 +55,10 @@ class MainWindow(QMainWindow):
         self.nav = QButtonGroup(self)
         self.nav.setExclusive(True)
         for i, name in enumerate(PAGES):
-            b = QPushButton(name)
+            b = QPushButton(t(name))
             b.setObjectName("navButton")
             b.setCheckable(True)
-            b.setAccessibleName(f"Ir a {name}")
+            b.setAccessibleName(t("Go to {name}", name=t(name)))
             self.nav.addButton(b, i)
             nav_lay.addWidget(b)
         self.nav.idClicked.connect(self.pages.setCurrentIndex)
@@ -80,10 +81,10 @@ class MainWindow(QMainWindow):
         self.mode.setFixedHeight(26)
         self.broker_state = QLabel()
         self.broker_state.setObjectName("muted")
-        self.stop_btn = QPushButton("Detener todo")
+        self.stop_btn = QPushButton(t("Stop everything"))
         self.stop_btn.setObjectName("danger")
-        self.stop_btn.setToolTip("Cancela las entradas pendientes y bloquea nuevas. Los stops de las posiciones "
-                                 "abiertas se mantienen.")
+        self.stop_btn.setToolTip(t("Cancels pending entries and blocks new ones. The stops on open "
+                                   "positions stay."))
         self.stop_btn.clicked.connect(self.stop_all)
         h.addWidget(self.mode)
         h.addWidget(self.broker_state)
@@ -114,7 +115,7 @@ class MainWindow(QMainWindow):
     def refresh_header(self) -> None:
         cfg = data.read_settings(self.settings_path)
         live = cfg.broker.live_trading
-        self.mode.setText("● DINERO REAL PERMITIDO" if live else "● MODO PRÁCTICA")
+        self.mode.setText(t("● REAL MONEY ALLOWED") if live else t("● PRACTICE MODE"))
         self.mode.setProperty("live", "true" if live else "false")
         self.mode.style().unpolish(self.mode)
         self.mode.style().polish(self.mode)
@@ -128,9 +129,9 @@ class MainWindow(QMainWindow):
 
     def stop_all(self) -> None:
         answer = QMessageBox.warning(
-            self, "Detener todo",
-            "Se cancelarán las órdenes de entrada pendientes en Schwab y se bloquearán entradas nuevas.\n"
-            "Los stops y objetivos de las posiciones abiertas se mantienen.\n\n¿Continuar?",
+            self, t("Stop everything"),
+            t("Pending entry orders at Schwab will be cancelled and new entries blocked.\n"
+              "The stops and targets on open positions stay.\n\nContinue?"),
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if answer != QMessageBox.Yes:
             return
@@ -153,10 +154,12 @@ class MainWindow(QMainWindow):
 
     def _stopped(self, cancelled: list[str]) -> None:
         self.stop_btn.setEnabled(True)
-        QMessageBox.information(self, "Detener todo", f"Hecho. Entradas canceladas: {len(cancelled)}. "
-                                "Las nuevas entradas están bloqueadas hasta que las reanudes.")
+        QMessageBox.information(self, t("Stop everything"),
+                                t("Done. Entries cancelled: {count}. New entries stay blocked until you "
+                                  "resume them.", count=len(cancelled)))
 
     def _stop_failed(self, error: str) -> None:
         self.stop_btn.setEnabled(True)
-        QMessageBox.critical(self, "Detener todo", f"No se pudo completar: {error}\n\nRevisa las órdenes en "
-                             "Schwab directamente.")
+        QMessageBox.critical(self, t("Stop everything"),
+                             t("Could not finish: {error}\n\nCheck the orders at Schwab directly.",
+                               error=error))

@@ -121,3 +121,36 @@ def test_the_journal_survives_closing_the_app(tmp_path):
 
     path.write_text("{ no es json", encoding="utf-8")
     assert load(path) == []                                   # a broken file loses practice, not the app
+
+
+def test_practice_sizes_on_the_real_balance_when_it_can_read_it():
+    """Sizing on an invented 25 000 when the account holds something else is misleading, so the
+    real equity is used when the broker answers, and the screen is told which it was."""
+    from miratrade.brokers.base import Account
+    from miratrade.practice import DEFAULT_EQUITY, account_equity, equity_from_accounts
+
+    class Broker:
+        name = "etrade"
+
+        def __init__(self, accounts):
+            self._accounts = accounts
+
+        def accounts(self):
+            if self._accounts is None:
+                raise RuntimeError("login expired")
+            return self._accounts
+
+    def account(equity):
+        return Account(number_masked="…1", account_hash="h", equity=equity, cash=0.0, buying_power=0.0)
+
+    assert account_equity(None) == (DEFAULT_EQUITY, "default")
+    assert account_equity(Broker([account(9_000.0), account(1_000.0)])) == (10_000.0, "etrade")
+    assert account_equity(Broker(None)) == (DEFAULT_EQUITY, "unreachable")
+    assert account_equity(Broker([])) == (DEFAULT_EQUITY, "unreadable")
+    assert account_equity(Broker([account(None)])) == (DEFAULT_EQUITY, "unreadable")
+    assert account_equity(Broker([account(0.0)])) == (DEFAULT_EQUITY, "unreadable")
+    assert equity_from_accounts([]) is None
+
+    # and the size follows the money: risking 1 % with 100 $ at stake per contract
+    assert size_for(20_000, 4.0, 3.0, 100) == 2           # 200 $ of risk
+    assert size_for(40_000, 4.0, 3.0, 100) == 4           # twice the account, twice the contracts

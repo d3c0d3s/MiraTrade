@@ -20,8 +20,11 @@ def run() -> int:
     screen.show()
     app.processEvents()
 
+    from miratrade.app import data
+    from miratrade.app.i18n import set_language
     from miratrade.app.window import MainWindow
 
+    set_language(data.read_settings().ui.language)        # before any screen builds its labels
     app.setStyleSheet(QSS)
     window = MainWindow()
     window.show()

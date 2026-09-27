@@ -589,8 +589,7 @@ class SignalsPage(QWidget):
 
     def add_to_practice(self) -> None:
         """Open the contract on screen as a paper position, sized by the risk settings."""
-        from miratrade.practice import PRACTICE_PATH, load, open_trade, save
-        from miratrade.app.pages.practice import START_EQUITY
+        from miratrade.practice import PRACTICE_PATH, account_equity, load, open_trade, save
 
         item = self.list.currentItem()
         contract = self._contract
@@ -600,11 +599,12 @@ class SignalsPage(QWidget):
         ev = item.data(Qt.UserRole)
         trades = load(PRACTICE_PATH)
         cfg = data.read_settings(self.settings_path)
+        equity, _source = account_equity(data.quote_broker(self.settings_path))
         try:
             trade = open_trade(
                 trades, ticker=ev["ticker"], kind="call", entry=contract["premium"],
                 stop=contract["stop"], target=contract["target"],
-                equity=START_EQUITY, note=str(ev.get("what", ""))[:120],
+                equity=equity, note=str(ev.get("what", ""))[:120],
                 strike=contract["strike"], expiry=str(contract["expiry"].date()), iv=contract["iv"], cfg=cfg)
         except ValueError as e:
             QMessageBox.warning(self, "Práctica", str(e))

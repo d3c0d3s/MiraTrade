@@ -17,11 +17,16 @@ from PySide6.QtWidgets import (QHBoxLayout, QHeaderView, QLabel, QMessageBox, QP
 from miratrade.app import data, theme
 from miratrade.app.charts import EquityCurve
 from miratrade.app.widgets import card, es_date, es_num, muted
-from miratrade.practice import CLOSED, OPEN, REASONS, load, mark, save, summary
+from miratrade.practice import (CLOSED, DEFAULT_EQUITY, OPEN, REASONS, account_equity, load, mark, save,
+                                summary)
 
 OPEN_COLUMNS = ["Posición", "Abierta", "Cantidad", "Entrada", "Ahora", "Stop", "Objetivo", "Ganancia", "Evento"]
 DONE_COLUMNS = ["Posición", "Abierta", "Cerrada", "Cantidad", "Entrada", "Salida", "Motivo", "Ganancia"]
-START_EQUITY = 25_000.0
+EQUITY_SOURCE = {"default": "saldo de práctica fijo (sin bróker conectado)",
+                 "unreachable": "no se pudo leer tu cuenta; usando el saldo fijo",
+                 "unreadable": "tu cuenta no devolvió saldo; usando el fijo",
+                 "schwab": "saldo real de tu cuenta de Schwab",
+                 "etrade": "saldo real de tu cuenta de E*TRADE"}
 
 
 def _money(v: float | None) -> str:
@@ -60,6 +65,7 @@ class PracticePage(QWidget):
         self.scan_dir = Path(scan_dir or data.SCAN_DIR)
         self.settings_path = Path(settings_path or data.SETTINGS_PATH)
         self.trades = load(self.path)
+        self.equity, self.equity_source = DEFAULT_EQUITY, "default"
 
         title = QLabel("Práctica")
         title.setObjectName("h1")
@@ -110,19 +116,27 @@ class PracticePage(QWidget):
 
     def reload(self) -> None:
         self.trades = load(self.path)
+        self.read_equity()
         self.refresh()
+
+    def read_equity(self) -> None:
+        """Ask the connected broker what the account is worth, so positions are sized on real
+        money; fall back to a stated default when there is no broker to ask."""
+        self.equity, self.equity_source = account_equity(data.quote_broker(self.settings_path))
 
     def refresh(self) -> None:
         open_trades = [t for t in self.trades if t.status == OPEN]
         done = [t for t in self.trades if t.status == CLOSED]
         self.empty.setVisible(not self.trades)
-        s = summary(self.trades, START_EQUITY)
+        s = summary(self.trades, self.equity)
         hit = "–" if not done else f"{s['acierto'] * 100:.0f} %"
         self.totals.setText(
-            f"Cuenta de práctica {_money(s['equity'])} · invertido {_money(s['invertido'])} · "
+            f"Cuenta {_money(s['equity'])} · invertido {_money(s['invertido'])} · "
             f"riesgo abierto {_money(s['riesgo_abierto'])}<br>"
             f"Cerradas {s['cerradas']} · aciertos {hit} · realizado {_money(s['ganancia_realizada'])} · "
-            f"abierto {_money(s['ganancia_abierta'])}")
+            f"abierto {_money(s['ganancia_abierta'])}<br>"
+            f"<span style='color:{theme.TEXT_2}'>Posiciones dimensionadas sobre {_money(self.equity)}: "
+            f"{EQUITY_SOURCE.get(self.equity_source, self.equity_source)}.</span>")
         self.meta.setText(f"{len(open_trades)} abiertas · {len(done)} cerradas")
         self.meta.setToolTip(f"Se guarda en {self.path}")
         self.close_btn.setEnabled(bool(open_trades))
@@ -169,6 +183,7 @@ class PracticePage(QWidget):
         return prices
 
     def mark_now(self) -> None:
+        self.read_equity()
         prices = self.latest_prices()
         missing = sorted({t.ticker for t in self.trades if t.status == OPEN and t.ticker not in prices})
         closed = mark(self.trades, prices)
