@@ -270,6 +270,27 @@ def cmd_scan(a) -> None:
     print("\nAnálisis, no asesoramiento.")
 
 
+def cmd_reprocess(a) -> None:
+    """Run the rules again over what is stored. No downloads: see miratrade/reprocess.py."""
+    from miratrade.config import load_user_config
+    from miratrade.reprocess import reprocess
+    from miratrade.scan import EVENT_LABELS
+
+    cfg = load_user_config()
+    if a.min_value is not None:
+        cfg.insider.min_value_usd = a.min_value
+    if a.lookback is not None:
+        cfg.insider.lookback_days = a.lookback
+    end = date.fromisoformat(a.end) if a.end else None
+    out = reprocess(days=a.days, end=end, cfg=cfg, cap_tier=a.cap, write=not a.dry_run)
+    if a.dry_run:
+        print("  --dry-run: nothing was written.")
+    for ev in out["events"].to_dict("records")[:a.show]:
+        kinds = ", ".join(v for k, v in EVENT_LABELS.items() if ev.get(k))
+        print(f"{ev['ticker']:6s} {pd.Timestamp(ev['signal_date']):%Y-%m-%d}  {kinds}: "
+              f"{ev.get('what') or ''}")
+
+
 def cmd_demo(a) -> None:
     from miratrade.synthetic import make_market
 
@@ -335,6 +356,20 @@ def main(argv: list[str] | None = None) -> None:
                     help="rank the universe over the whole window (round 1 did this; it peeks)")
     ex.add_argument("--out", default="reports/5y")
     ex.set_defaults(func=cmd_experiment)
+
+    rp = sub.add_parser("reprocess", help="run the event rules again over stored data, no downloads")
+    rp.add_argument("--days", type=int, default=None,
+                    help="window ending at the last day stored (default: everything stored)")
+    rp.add_argument("--end", help="YYYY-MM-DD (default: the last filing in the store)")
+    rp.add_argument("--cap", choices=list(CAP_TIERS), default=None, help="company size to keep")
+    rp.add_argument("--min-value", type=float, default=None,
+                    help="smallest insider purchase that counts, in dollars")
+    rp.add_argument("--lookback", type=int, default=None,
+                    help="days a purchase keeps counting towards a cluster")
+    rp.add_argument("--dry-run", action="store_true",
+                    help="show what these settings would find without touching the events table")
+    rp.add_argument("--show", type=int, default=20, help="how many events to print")
+    rp.set_defaults(func=cmd_reprocess)
 
     de = sub.add_parser("demo", help="run the full pipeline on synthetic data with a planted edge")
     de.add_argument("--out", default="reports/demo")
