@@ -27,6 +27,7 @@ def _never_the_real_database(tmp_path, monkeypatch):
     """
     import miratrade.backup
     import miratrade.config
+    import miratrade.prefs
     import miratrade.store.db
 
     path = tmp_path / "test-market.db"
@@ -36,4 +37,8 @@ def _never_the_real_database(tmp_path, monkeypatch):
     for module in (miratrade.config, miratrade.backup):
         if hasattr(module, "DATA_HOME"):
             monkeypatch.setattr(module, "DATA_HOME", tmp_path / "data-home")
+    # Settings live in the database now, seeded once from this file. Left unpatched, a test would
+    # read the real user's settings.json into its own store and then assert on whatever that person
+    # happens to have configured — which passes on one machine and fails on the next.
+    monkeypatch.setattr(miratrade.prefs, "JSON_PATH", tmp_path / "settings.json")
     yield path

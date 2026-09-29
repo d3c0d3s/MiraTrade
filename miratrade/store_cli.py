@@ -75,7 +75,16 @@ def add_parser(sub) -> None:
     rs.add_argument("--yes", action="store_true", help="required: this replaces the database")
     rs.set_defaults(func=cmd_restore)
 
-    for p in (info, imp, bk, rs):
+    se = inner.add_parser("settings", help="the settings the app and the web front-end both read")
+    se.add_argument("--set", dest="assign", action="append", metavar="SECTION.KEY=VALUE",
+                    default=[], help="change one setting; the value is JSON "
+                                     "(25000, false, \"schwab\"). Repeatable.")
+    se.add_argument("--reset", action="append", metavar="SECTION[.KEY]", default=[],
+                    help="forget a setting, or a whole section, so the default applies again")
+    se.add_argument("--all", action="store_true", help="show every setting, not only what differs")
+    se.set_defaults(func=cmd_settings)
+
+    for p in (info, imp, bk, rs, se):
         p.add_argument("--db", default=None, type=_path, help="a database file other than the default")
 
 
@@ -83,6 +92,55 @@ def _path(value: str):
     from pathlib import Path
 
     return Path(value).expanduser()
+
+
+def cmd_settings(a) -> None:
+    """Read and change the settings both front-ends share. See miratrade/prefs.py."""
+    import json
+
+    from miratrade import prefs
+
+    db = store.connect(a.db or DB_PATH)
+    try:
+        prefs.import_json(db)                 # first run: bring settings.json in
+        for target in a.reset:
+            section, _, key = target.partition(".")
+            gone = prefs.reset(db, section, key or None)
+            print(f"  reset {target}: {gone} row{'' if gone == 1 else 's'} removed")
+        for assignment in a.assign:
+            target, _, raw = assignment.partition("=")
+            section, _, key = target.strip().partition(".")
+            if not key:
+                raise SystemExit(f"--set wants SECTION.KEY=VALUE, not {assignment!r}")
+            try:
+                value = json.loads(raw)
+            except ValueError:
+                value = raw                   # a bare word is a string: --set data.cap_tier=small
+            prefs.put(db, section, key, value)
+            print(f"  {section}.{key} = {json.dumps(value)}")
+
+        cfg, unknown = prefs.read(db)
+        touched = prefs.changed(db)
+        if a.all:
+            for name, section in prefs.sections(cfg).items():
+                print(f"\n[{name}]")
+                for key, value in vars(section).items():
+                    mark = " *" if (name, key) in touched else ""
+                    print(f"  {key:<26} {json.dumps(value)}{mark}")
+        elif touched:
+            print(f"\n{len(touched)} settings differ from the default:")
+            for (name, key), (value, default, when) in sorted(touched.items()):
+                print(f"  {name}.{key:<22} {json.dumps(value)}   (default {json.dumps(default)}, "
+                      f"changed {when[:10]})")
+        else:
+            print("\nEverything is at its default. `--all` lists them.")
+        if unknown:
+            # Not a crash: an old row is better ignored than fatal. But silence would leave someone
+            # wondering why a value they set does nothing.
+            print(f"\nIgnored, no longer settings: {', '.join(unknown)}")
+        print(f"\n{prefs.stored(db)} stored in {a.db or DB_PATH}, mirrored to {prefs.JSON_PATH}")
+    finally:
+        db.close()
 
 
 def cmd_backup(a) -> None:

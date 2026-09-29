@@ -157,6 +157,55 @@ def earnings_for(db, prices: dict[str, pd.DataFrame]) -> dict[str, pd.Series]:
     return {t: days_to_earnings(db, t, bars.index) for t, bars in prices.items() if len(bars)}
 
 
+def stored_inputs(db, days: int, end: date | None = None, cfg: Config = Config(),
+                  max_insider_tickers: int = 150, max_13d_tickers: int = 100,
+                  cap_tier: str | None = None, universe_cutoff: date | None = None,
+                  log: Callable[[str], None] = print) -> dict:
+    """Everything a backtest reads, taken from the store instead of downloaded.
+
+    Same shape as ``cli.load_inputs`` so ``pipeline`` cannot tell the difference — which is the
+    point: a five-year analysis re-run under different settings should cost the simulation, not the
+    download. What it cannot do is widen the window; a year nobody fetched is not in here.
+    """
+    from miratrade import store
+    from miratrade.signals.options_flow import unusual_prints
+
+    _first, _since, end = window(db, days, end, cfg)
+    start = end - timedelta(days=days)
+    src = sources(db, start - timedelta(days=max(cfg.smart.lookback_days, 60)), end, cfg)
+    insiders, flow = src["insiders"], src["flow"]
+
+    buys = insiders[(insiders["code"] == "P") & (insiders["value"] >= cfg.insider.min_value_usd)]
+    if universe_cutoff is not None:
+        # Ranking over the whole window would let the confirmation period choose the universe it is
+        # then judged on. Only filings before the cut may choose it.
+        buys = buys[pd.to_datetime(buys["filing_date"]).dt.date < universe_cutoff]
+    ranked = buys.assign(value=buys["value"].clip(upper=cfg.insider.rank_cap_usd))
+    universe = set(ranked.groupby("ticker")["value"].sum().nlargest(max_insider_tickers).index)
+    if len(flow):
+        universe |= set(unusual_prints(flow, cfg.flow)["ticker"].unique())
+    if len(src["ownership"]):
+        own = src["ownership"]
+        new_13d = own[(own["kind"] == "13D") & ~own["amendment"].astype(bool)]
+        universe |= set(new_13d["ticker"].value_counts().head(max_13d_tickers).index)
+    universe |= {"SPY"}
+
+    tier = cap_tier if cap_tier is not None else cfg.data.cap_tier
+    if tier != "all":
+        from miratrade.data.fundamentals import cap_from_filings, filter_by_tier, tier_report
+
+        universe, stats = filter_by_tier(universe - {"SPY"},
+                                         cap_from_filings(insiders, src["shares"]), tier)
+        universe |= {"SPY"}
+        log("  " + tier_report(stats, tier))
+    prices = store.prices(db, universe, start - timedelta(days=WARMUP_DAYS), end)
+    log(f"  {len(insiders):,} filings, {len(universe)} companies in the universe, "
+        f"{len(prices)} with bars stored, {sum(len(p) for p in prices.values()):,} bars")
+    return {"prices": prices, "insiders": insiders, "flow": flow, "ownership": src["ownership"],
+            "short_volume": src["short_volume"], "shares": src["shares"], "universe": universe,
+            "start": start, "end": end}
+
+
 def reprocess(db=None, days: int | None = None, end: date | None = None, cfg: Config = Config(),
               cap_tier: str | None = None, log: Callable[[str], None] = print,
               write: bool = True) -> dict:

@@ -1,5 +1,16 @@
-"""Signals: the new events of the last days, each with its chart and the evidence of similar
-past events (from the newest report with ``events.csv``). The scan runs as a separate process."""
+"""Signals: the events of the last days, each with its chart, the evidence of similar past events
+(from the newest report with ``events.csv``) and the contract a profile would buy.
+
+**This screen does not download.** It searches the events already stored, and re-derives them under
+the current settings with the reprocess engine, which reads the market database and never touches the
+network (:mod:`miratrade.reprocess`). When the stored data is behind it says so and sends you to the
+Scanner, which is the one screen that fetches. The reason is that «search» used to mean «download»
+here: pressing it could cost minutes at the SEC or answer instantly, and nothing on screen said
+which. A search that is always fast and sometimes stale is honest as long as it says when it is
+stale; a search that is sometimes slow is not usable at all.
+
+The search runs as a separate process, so a slow one never freezes the window.
+"""
 from __future__ import annotations
 
 import sys
@@ -225,6 +236,7 @@ class SignalsPage(QWidget):
     open_settings = Signal()
     use_research = Signal()
     practice_added = Signal()
+    go_to_scanner = Signal()            # "the data is old": the Scanner is where it is fetched
 
     def __init__(self, reports_dir: Path | None = None, scan_dir: Path | None = None, cfg: Config = Config(),
                  settings_path: Path | None = None, db=None):
@@ -239,8 +251,6 @@ class SignalsPage(QWidget):
         self._owns_db = db is None
         self.scan: dict | None = None
         self._contract: dict | None = None
-        self.auto = QTimer(self)                 # repeats the download on its own; see _tick
-        self.auto.timeout.connect(self._tick)
         self.history = self.rules = pd.DataFrame()
         self.report: Path | None = None
 
@@ -255,9 +265,9 @@ class SignalsPage(QWidget):
         self.days.setRange(1, 365)
         self.days.setValue(data.read_settings(self.settings_path).data.scan_days)
         self.days.setSuffix(t(" days"))
-        self.days.setAccessibleName(t("The window: days to download and to show"))
-        self.days.setToolTip(t("How many days «Update data» downloads, and how many the list shows. "
-                               "Changing it alone only re-reads what is already stored."))
+        self.days.setAccessibleName(t("The window: how many days to search"))
+        self.days.setToolTip(t("How many days of stored data to search. How many are downloaded is "
+                               "set on the Scanner."))
         self.days.valueChanged.connect(self._days_changed)
         self.cap = data.cap_combo(data.read_settings(self.settings_path).data.cap_tier, self._cap_changed)
         self.cap.setToolTip(t("Narrows what is on screen by company size. It never downloads."))
@@ -269,9 +279,11 @@ class SignalsPage(QWidget):
         self.variant.setToolTip(t("Which profile the evidence and the contract are shown for. It "
                                   "never downloads."))
         self.variant.currentIndexChanged.connect(lambda _: self._show_selected(self.list.currentItem()))
-        self.scan_btn = QPushButton(t("Update data"))
+        self.scan_btn = QPushButton(t("Search signals"))
         self.scan_btn.setObjectName("primary")
-        self.scan_btn.clicked.connect(self.start_scan)
+        self.scan_btn.setToolTip(t("Finds the events in the stored data under the current settings. "
+                                   "It never downloads: the Scanner does that."))
+        self.scan_btn.clicked.connect(self.start_search)
         self.cancel_btn = QPushButton(t("Cancel"))
         self.cancel_btn.clicked.connect(self.cancel_scan)
         self.cancel_btn.hide()
@@ -291,23 +303,20 @@ class SignalsPage(QWidget):
         self.log.setMaximumHeight(120)
         self.log.hide()
 
-        # Data-source banner: says up front whether a scan can even get prices.
+        # Staleness alert. Not a failure and not a nag: the one thing a screen that never downloads
+        # owes the reader is to say how old what it is showing is, and where to make it newer.
         self.coverage = muted("")
         self.coverage.hide()
         self.source_msg = _label("", "body", wrap=True)
-        self.source_btn = QPushButton(t("Open Settings"))
-        self.source_btn.clicked.connect(self.open_settings.emit)
-        self.research_btn = QPushButton(t("Use public web sources"))
-        self.research_btn.setToolTip(t("Yahoo / Stooq, for your personal research only, while you have "
-                                       "no broker account connected."))
-        self.research_btn.clicked.connect(self.use_research.emit)
+        self.source_btn = QPushButton(t("Go to Scanner"))
+        self.source_btn.setToolTip(t("The Scanner is the only screen that downloads."))
+        self.source_btn.clicked.connect(self.go_to_scanner.emit)
         self.banner = QFrame()
         self.banner.setObjectName("banner")
         b = QHBoxLayout(self.banner)
         b.setContentsMargins(14, 10, 14, 10)
         b.setSpacing(12)
         b.addWidget(self.source_msg, 1)
-        b.addWidget(self.research_btn)
         b.addWidget(self.source_btn)
         self.banner.hide()
 
@@ -326,9 +335,8 @@ class SignalsPage(QWidget):
         self.list.setAccessibleName(t("New events"))
         self.list.setUniformItemSizes(False)
         self.list.currentItemChanged.connect(self._show_selected)
-        self.empty = muted(t("No search yet. Press «Update data»: the first time it downloads the SEC "
-                             "Form 4 filings of those days and can take several minutes. Everything is "
-                             "cached."))
+        self.empty = muted(t("No events stored for this window. Press «Search signals» to look again "
+                             "under the current settings, or go to the Scanner to download more days."))
         left = QVBoxLayout()
         left.setSpacing(10)
         left.addLayout(head)
@@ -461,55 +469,25 @@ class SignalsPage(QWidget):
             self.cap.setCurrentIndex(max(0, self.cap.findData(tier)))
             self.cap.blockSignals(False)
 
-    def in_refresh_window(self) -> bool:
-        """Whether the clock is inside the New York window where filings actually arrive."""
-        d = data.read_settings(self.settings_path).data
-        return within_window(pd.Timestamp.now(tz="UTC"), d.auto_refresh_from, d.auto_refresh_to,
-                             d.auto_refresh_weekdays_only)
-
-    def _tick(self) -> None:
-        """One turn of the automatic refresh. It starts a download only when the last one has
-        finished, there is somewhere to get prices from, and New York is still filing — outside
-        that there is nothing new to find."""
-        if self.proc is None and self.scan_btn.isEnabled() and self.in_refresh_window():
-            self.start_scan()
-
-    def refresh_auto(self) -> None:
-        """Start, restart or stop the automatic refresh from the saved settings."""
-        minutes = data.read_settings(self.settings_path).data.auto_refresh_minutes
-        if minutes and minutes >= MIN_AUTO_REFRESH_MINUTES:
-            self.auto.start(int(minutes) * 60_000)
-        else:
-            self.auto.stop()
-        self.refresh_source()
-
     def refresh_source(self) -> None:
-        """Whether a scan could get prices right now (checked without downloading anything)."""
-        from miratrade.data.prices import source_ready
+        """Say how old the stored data is, and offer the one screen that can make it newer.
 
-        try:
-            # the source this app is configured with, not whatever the default settings file says
-            ok, why = source_ready(data.read_settings(self.settings_path).data.price_source,
-                                   translate=t)
-        except Exception as e:
-            ok, why = False, t("Could not check the price source: {error}", error=e)
-        self.banner.setVisible(not ok)
-        d = data.read_settings(self.settings_path).data
-        if not self.auto.isActive():
-            self.scan_btn.setText(t("Update data"))
-        elif self.in_refresh_window():
-            self.scan_btn.setText(t("Update data · automatic every {minutes} min",
-                                    minutes=d.auto_refresh_minutes))
-        else:
-            self.scan_btn.setText(t("Update data · automatic paused"))
-            self.scan_btn.setToolTip(t("Outside the {start}–{end} New York window. You can still press it.",
-                                       start=d.auto_refresh_from, end=d.auto_refresh_to))
-        self.source_msg.setText(t("{reason} Without prices the search cannot start.", reason=why))
-        self.scan_btn.setEnabled(ok and self.proc is None)
-        self.scan_btn.setToolTip("" if ok else why)
+        A screen that never downloads owes the reader exactly this. Without it, "no new events" and
+        "nobody has downloaded since Tuesday" look identical, and they mean opposite things.
+        """
+        from miratrade import freshness
+
+        db = self.db
+        if db is None:
+            self.banner.hide()
+            return
+        state = freshness.check(db)
+        self.banner.setVisible(state.stale)
+        self.source_msg.setText(state.say(t))
+        self.scan_btn.setEnabled(self.proc is None)
 
     def refresh(self) -> None:
-        self.refresh_auto()
+        self.refresh_source()
         self.honesty.setText(data.honesty_line(self.reports_dir))
         self.report = latest_history_report(self.reports_dir)
         self.history, self.rules = load_history(self.report) if self.report else (pd.DataFrame(), pd.DataFrame())
@@ -525,7 +503,8 @@ class SignalsPage(QWidget):
                    else t("no report with events for the evidence"))
             self.meta.setText(t("Search {span} · {source}", span=span, source=src))
             if not has:
-                self.empty.setText(t("No new event in those days. Try more days."))
+                self.empty.setText(t("No event in those days under these settings. Try more days, a "
+                                     "wider size band, or looser conditions."))
         else:
             self.meta.setText(t("No search yet"))
         self.filter.setEnabled(has)
@@ -680,14 +659,15 @@ class SignalsPage(QWidget):
         sizeless = tier != "all" and sized == 0
         self._fill_list(shown)
         if sizeless and self.stored_events:
-            self.empty.setText(t("This download predates the size filter and did not save the companies' "
-                                 "market capitalisation. Press «Update data», or choose «All» under Size."))
+            self.empty.setText(t("These events predate the size filter and have no market "
+                                 "capitalisation stored. Press «Search signals» to rebuild them, or "
+                                 "choose «All» under Size."))
             self.empty.setVisible(True)
         have = stored_days(db)
         asking = self.days.value()
         notes = []
         if asking > have:
-            notes.append(t("Only {days} days downloaded; press «Update data» to bring more.", days=have))
+            notes.append(t("Only {days} days are stored; the Scanner downloads more.", days=have))
         if tier != "all" and not sizeless:
             notes.append(t("Filtering by size: {tier}.", tier=self.cap.currentText()))
         self.coverage.setText("  ".join(notes))
@@ -808,9 +788,15 @@ class SignalsPage(QWidget):
                 risk=f"{trade.risk:,.0f}") + "\n"
             + t("No real money; you will see it on the Practice screen."))
 
-    # ------------------------------------------------------------------ running a scan
+    # ------------------------------------------------------------------ searching stored data
 
-    def start_scan(self) -> None:
+    def start_search(self) -> None:
+        """Re-derive the events of the window from the stored filings, under the current settings.
+
+        This is :mod:`miratrade.reprocess` in a separate process. Nothing is downloaded — pressing
+        it after changing a threshold is how you see what that threshold finds, in seconds, over
+        data that was already paid for in time.
+        """
         if self.proc is not None:
             return
         self.proc = QProcess(self)
@@ -821,10 +807,9 @@ class SignalsPage(QWidget):
         self.log.show()
         self.scan_btn.setEnabled(False)
         self.cancel_btn.show()
-        window = self.days.value()               # the control on screen is the window, full stop
-        self.meta.setText(t("Downloading the last {days} days…", days=window))
-        self.proc.start(sys.executable, data.scan_command(window, self.variant.currentData(),
-                                                          self.scan_dir, self.report, "all"))
+        window = self.days.value()
+        self.meta.setText(t("Searching the last {days} days of stored data…", days=window))
+        self.proc.start(sys.executable, data.search_command(window))
 
     def _read_output(self) -> None:
         text = bytes(self.proc.readAllStandardOutput()).decode("utf-8", "replace")
@@ -835,17 +820,17 @@ class SignalsPage(QWidget):
     def _finished(self, code: int) -> None:
         self.proc = None
         self.scan_btn.setEnabled(True)
-        self.refresh_source()
         self.cancel_btn.hide()
         if code == 0:
             self.log.hide()
             if self._owns_db:
-                self.reopen_db()             # the scan wrote rows this connection cannot see
+                self.reopen_db()             # the search rewrote rows this connection cannot see
             self.refresh()
         else:
             self.meta.setText(t("The search ended with an error (code {code}). Check the log.", code=code))
+        self.refresh_source()
 
     def cancel_scan(self) -> None:
         if self.proc is not None:
             self.proc.kill()
-            self.meta.setText(t("Cancelled. What was downloaded is kept."))
+            self.meta.setText(t("Cancelled. The stored events are unchanged."))

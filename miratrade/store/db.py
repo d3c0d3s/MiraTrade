@@ -55,6 +55,9 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
     # contract can be traded at all, and how much of a profit target the round trip eats.
     3: ("ALTER TABLE option_flow ADD COLUMN bid REAL",
         "ALTER TABLE option_flow ADD COLUMN ask REAL"),
+    # Version 5 only adds the `settings` table, which the DDL above creates on its own. The version
+    # still steps, because a reader has to know whether the file it opened can hold settings at all.
+    4: (),
 }
 
 

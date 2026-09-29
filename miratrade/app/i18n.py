@@ -649,6 +649,70 @@ ES: dict[str, str] = {
         "Para qué perfil se muestran la evidencia y el contrato. Nunca descarga.",
     "yes": "sí",
     "no": "no",
+    # ------------------------------------------------- downloading: only the Scanner does it
+    "fetch ": "traer ",
+    "How many days to download": "Cuántos días descargar",
+    "How far back «Update data» asks for. Days already downloaded are skipped, so this is cheap "
+    "to raise.":
+        "Hasta dónde pide «Actualizar datos». Los días ya descargados se saltan, así que subirlo "
+        "sale barato.",
+    "How far behind the stored data is. Measured on what was downloaded, not on what was found: "
+    "a quiet day and a day nobody asked about are not the same thing.":
+        "Cuánto retraso lleva la información guardada. Se mide por lo descargado, no por lo "
+        "encontrado: un día tranquilo y un día que nadie pidió no son lo mismo.",
+    "{reason} Without prices a download cannot start.":
+        "{reason} Sin precios no se puede empezar una descarga.",
+    "The download ended with an error (code {code}). Check the log.":
+        "La descarga terminó con un error (código {code}). Revisa el registro.",
+    "Nothing downloaded yet. Press «Update data» above. It is stored in {path}.":
+        "Todavía no se ha descargado nada. Pulsa «Actualizar datos» arriba. Se guarda en {path}.",
+    "Nothing matches these filters. «Clear filters» puts them back.":
+        "Nada coincide con estos filtros. «Limpiar filtros» los deja como estaban.",
+    "Nothing collected here yet. «Update data» brings Form 4 filings, 13D/G and prices; "
+    "`miratrade congress trades` brings congressional disclosures. It is stored in {path}.":
+        "Aquí todavía no se ha recopilado nada. «Actualizar datos» trae los Form 4, los 13D/G y "
+        "los precios; `miratrade congress trades` trae las declaraciones del Congreso. Se guarda "
+        "en {path}.",
+    # ------------------------------------------------- the screens that only read
+    "Go to Scanner": "Ir al Scanner",
+    "The Scanner is the only screen that downloads.":
+        "El Scanner es la única pantalla que descarga.",
+    "Search signals": "Buscar señales",
+    "Finds the events in the stored data under the current settings. It never downloads: the "
+    "Scanner does that.":
+        "Busca los eventos en la información guardada con los ajustes actuales. Nunca descarga: "
+        "de eso se encarga el Scanner.",
+    "The window: how many days to search": "La ventana: cuántos días buscar",
+    "How many days of stored data to search. How many are downloaded is set on the Scanner.":
+        "Cuántos días de la información guardada se buscan. Cuántos se descargan se decide en el "
+        "Scanner.",
+    "Searching the last {days} days of stored data…":
+        "Buscando en los últimos {days} días guardados…",
+    "No events stored for this window. Press «Search signals» to look again under the current "
+    "settings, or go to the Scanner to download more days.":
+        "No hay eventos guardados para esta ventana. Pulsa «Buscar señales» para mirar otra vez "
+        "con los ajustes actuales, o ve al Scanner a descargar más días.",
+    "No event in those days under these settings. Try more days, a wider size band, or looser "
+    "conditions.":
+        "Ningún evento en esos días con estos ajustes. Prueba con más días, un tramo de tamaño más "
+        "amplio o condiciones menos estrictas.",
+    "These events predate the size filter and have no market capitalisation stored. Press "
+    "«Search signals» to rebuild them, or choose «All» under Size.":
+        "Estos eventos son anteriores al filtro de tamaño y no tienen capitalización guardada. "
+        "Pulsa «Buscar señales» para rehacerlos, o elige «Todas» en Tamaño.",
+    "Only {days} days are stored; the Scanner downloads more.":
+        "Solo hay {days} días guardados; el Scanner descarga más.",
+    "Cancelled. The stored events are unchanged.":
+        "Cancelado. Los eventos guardados no han cambiado.",
+    "Backtests the stored data under the current settings. It never downloads: the Scanner does "
+    "that.":
+        "Simula la información guardada con los ajustes actuales. Nunca descarga: de eso se "
+        "encarga el Scanner.",
+    "Simulates every event in the stored data and looks for rules that survive out of sample. "
+    "Minutes, not hours: nothing is downloaded.":
+        "Simula todos los eventos de la información guardada y busca reglas que aguanten fuera de "
+        "muestra. Minutos, no horas: no se descarga nada.",
+    "Analysing {days} days of stored data…": "Analizando {days} días guardados…",
     # ---------------------------------------------------------------- scanner
     "Scanner": "Scanner",
     "Everything collected, as it was filed. No strategy applied here.":

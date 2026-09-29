@@ -21,7 +21,7 @@ writes that second app.
 """
 from __future__ import annotations
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # Ordinary tables, created in this order.
 TABLES: dict[str, str] = {
@@ -30,6 +30,21 @@ TABLES: dict[str, str] = {
         CREATE TABLE IF NOT EXISTS meta (
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL
+        )""",
+    # Every setting a person can change, one row per setting rather than one blob, so two clients
+    # can each change a different thing without one silently undoing the other — which is what a
+    # whole-file save does the moment the app and the web front-end are both open.
+    #
+    # `value` is JSON so a list, a boolean and a number all come back as what they were: `false`
+    # read from plain text is the string "false", which is true, and that is how a limit gets
+    # quietly disabled.
+    "settings": """
+        CREATE TABLE IF NOT EXISTS settings (
+            section    TEXT NOT NULL,      -- a section of Config: risk, data, insider, flow…
+            key        TEXT NOT NULL,      -- a field of that section
+            value      TEXT NOT NULL,      -- JSON-encoded value
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (section, key)
         )""",
     # Which days (or tickers) have already been downloaded per source, so a run fetches only the
     # gaps. A row means "asked and answered", including an answer of nothing at all — without that

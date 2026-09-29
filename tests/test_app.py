@@ -1,5 +1,6 @@
 """Desktop app: pure data functions and the screens (offscreen, no real settings or credentials)."""
 import os
+import pathlib
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -54,7 +55,8 @@ def test_report_listing_and_loading(tmp_path):
     assert list(rep["rules"]["rule"]) == ["ins:any_buy", "flow:bullish"] and rep["candidates"].empty
 
 
-def test_settings_round_trip_rejects_bad_values(tmp_path):
+def test_settings_round_trip(tmp_path):
+    """Settings live in the market database now; the file is the seed and the readable mirror."""
     path = tmp_path / "settings.json"
     cfg = data.read_settings(path)
     cfg.risk.max_positions = 3
@@ -62,9 +64,33 @@ def test_settings_round_trip_rejects_bad_values(tmp_path):
     data.write_settings(cfg, path)
     again = data.read_settings(path)
     assert again.risk.max_positions == 3 and again.broker.live_trading
-    path.write_text(json.dumps({"risk": {"max_postions": 9}}), encoding="utf-8")   # typo
+    assert json.loads(path.read_text(encoding="utf-8"))["risk"]["max_positions"] == 3
+
+
+def test_a_typo_can_never_quietly_disable_a_limit(tmp_path):
+    """The guarantee the settings file used to carry, kept in both places it now matters.
+
+    Reading a file still refuses a name it does not know — that file is what seeds the store, so a
+    typo must not get in. A row already in the store is ignored and *reported* instead: refusing to
+    start over a leftover row from an older version would be the worse failure of the two, but
+    silence would leave someone wondering why a value they set does nothing.
+    """
+    from miratrade import prefs, store
+    from miratrade.config import load_user_config
+
+    path = tmp_path / "typo.json"
+    path.write_text(json.dumps({"risk": {"max_postions": 9}}), encoding="utf-8")
     with pytest.raises(ValueError, match="unknown setting"):
-        data.read_settings(path)
+        load_user_config(path)
+
+    db = store.connect(tmp_path / "m.db")
+    with pytest.raises(KeyError):                       # nor can one be written
+        prefs.put(db, "risk", "max_postions", 9)
+    db.execute("INSERT INTO settings VALUES ('risk', 'max_postions', '9', '2026-09-28')")
+    cfg, unknown = prefs.read(db)
+    assert cfg.risk.max_positions == 5                  # the default, untouched
+    assert unknown == ["risk.max_postions"]             # and said out loud
+    db.close()
 
 
 @pytest.fixture
@@ -153,7 +179,9 @@ def test_signals_page_empty_state(window):
     s = window.signals
     window.nav.button(PAGES.index("Signals")).click()     # the app now opens on the Scanner
     assert window.pages.currentWidget() is s
-    assert s.list.count() == 0 and not s.empty.isHidden() and "Actualizar datos" in s.empty.text()
+    assert s.list.count() == 0 and not s.empty.isHidden()
+    # it searches what is stored; the Scanner is the screen that downloads
+    assert "Buscar señales" in s.empty.text() and "Scanner" in s.empty.text()
     assert s.variant.currentData() == "call45_40" and not s.preview_btn.isEnabled()
 
 
@@ -263,20 +291,36 @@ def test_data_folders_do_not_depend_on_the_launch_directory(tmp_path, monkeypatc
     assert out.stdout.strip() == str(tmp_path / "otros")            # the variable still wins
 
 
-def test_signals_banner_offers_a_way_out_when_no_broker_is_connected(window, monkeypatch):
-    """Schwab not approved yet: say so before any download and let one click switch sources."""
+def test_scanner_banner_offers_a_way_out_when_no_broker_is_connected(window, monkeypatch):
+    """Schwab not approved yet: say so before any download and let one click switch sources.
+
+    On the Scanner, because that is the only screen that downloads now."""
     from PySide6.QtWidgets import QMessageBox
 
-    s = window.signals
-    assert not s.banner.isHidden() and not s.scan_btn.isEnabled()
+    s = window.scanner
+    assert not s.banner.isHidden() and not s.download_btn.isEnabled()
     assert "Schwab" in s.source_msg.text()
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.No)
     s.research_btn.click()
-    assert not s.scan_btn.isEnabled()                       # declined: still blocked
+    assert not s.download_btn.isEnabled()                   # declined: still blocked
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.Yes)
     s.research_btn.click()
-    assert s.banner.isHidden() and s.scan_btn.isEnabled()   # now a scan can run
+    assert s.banner.isHidden() and s.download_btn.isEnabled()   # now a download can run
     assert json.loads(window.settings.settings_path.read_text(encoding="utf-8"))["data"]["price_source"] == "research"
+
+
+def test_only_the_scanner_can_download(window):
+    """The whole point of the split: every other screen works over what is already stored.
+
+    A screen that might download and might not, with nothing on it saying which, is the thing this
+    replaced — «search» cost either two seconds or twenty minutes.
+    """
+    assert hasattr(window.scanner, "start_download")
+    for page in (window.signals, window.reports, window.practice):
+        assert not hasattr(page, "start_download")
+    # and Signals' button re-derives events from the store, never fetches
+    assert "reprocess" in data.search_command(30)
+    assert "--offline" in data.offline_analysis_command(365, pathlib.Path("out"))
 
 
 def _scan_with(tmp_path, tickers):
@@ -391,7 +435,7 @@ def test_window_and_size_filter_without_searching_again(qtbot, tmp_path):
                        settings_path=tmp_path / "settings.json", db=db)
     qtbot.addWidget(page)
     started = []
-    page.start_scan = lambda: started.append(1)              # nothing here may fetch
+    page.start_search = lambda: started.append(1)            # nothing here may fetch
 
     def listed():
         return {page.list.item(i).data(Qt_UserRole)["ticker"] for i in range(page.list.count())}
@@ -419,11 +463,11 @@ def test_automatic_refresh_respects_the_floor_and_never_overlaps(window, monkeyp
     from miratrade.config import MIN_AUTO_REFRESH_MINUTES
 
     s = window.settings
-    sig = window.signals
+    sig = window.scanner                                        # downloading lives here now
     assert not sig.auto.isActive()                              # off by default
 
     started = []
-    monkeypatch.setattr(sig, "start_scan", lambda: started.append(1))
+    monkeypatch.setattr(sig, "start_download", lambda: started.append(1))
 
     s.auto_refresh.setValue(MIN_AUTO_REFRESH_MINUTES - 1)       # below the floor: stays off
     s.save()
@@ -435,9 +479,9 @@ def test_automatic_refresh_respects_the_floor_and_never_overlaps(window, monkeyp
     s.window_to.setTime(QTime(23, 59))                          # rules, not about today's date
     s.save()
     assert sig.auto.isActive() and sig.auto.interval() == 15 * 60_000
-    assert "automático cada 15 min" in sig.scan_btn.text()
+    assert "automático cada 15 min" in sig.download_btn.text()
 
-    sig.scan_btn.setEnabled(True)
+    sig.download_btn.setEnabled(True)
     sig._tick()
     assert started == [1]
 
@@ -446,7 +490,7 @@ def test_automatic_refresh_respects_the_floor_and_never_overlaps(window, monkeyp
     assert started == [1]
     sig.proc = None
 
-    sig.scan_btn.setEnabled(False)                              # no price source
+    sig.download_btn.setEnabled(False)                          # no price source
     sig._tick()
     assert started == [1]
 
@@ -454,13 +498,13 @@ def test_automatic_refresh_respects_the_floor_and_never_overlaps(window, monkeyp
     s.window_to.setTime(QTime(3, 1))
     s.save()
     assert not sig.in_refresh_window()
-    sig.scan_btn.setEnabled(True)
+    sig.download_btn.setEnabled(True)
     sig._tick()
-    assert started == [1] and "en pausa" in sig.scan_btn.text()
+    assert started == [1] and "en pausa" in sig.download_btn.text()
 
     s.auto_refresh.setValue(0)
     s.save()
-    assert not sig.auto.isActive() and sig.scan_btn.text() == "Actualizar datos"
+    assert not sig.auto.isActive() and sig.download_btn.text() == "Actualizar datos"
 
 
 def test_download_window_is_a_setting(window):
@@ -1010,17 +1054,17 @@ def test_signals_days_is_the_window_and_the_other_two_only_narrow(qtbot, tmp_pat
     assert page.days.value() == 30                     # it starts at the window that was saved
 
     started = []
-    monkeypatch.setattr(page, "start_scan", lambda: started.append(page.days.value()))
+    monkeypatch.setattr(page, "start_search", lambda: started.append(page.days.value()))
     page.days.setValue(12)
-    assert started == []                               # changing it downloads nothing
+    assert started == []                               # changing it searches nothing by itself
     assert data.read_settings(settings).data.scan_days == 12     # but is remembered
 
     page.cap.setCurrentIndex(max(0, page.cap.findData("large")))
     page.variant.setCurrentIndex(1 if page.variant.count() > 1 else 0)
     assert started == []                               # neither does the profile or the size
 
-    page.start_scan()
-    assert started == [12]                             # the button downloads the window on screen
+    page.start_search()
+    assert started == [12]                             # the button searches the window on screen
     db.close()
 
 

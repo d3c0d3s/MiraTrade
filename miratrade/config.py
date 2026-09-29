@@ -277,12 +277,22 @@ class Config:
 
 
 def load_user_config(path: Path | None = None) -> Config:
-    """Defaults overlaid with ``%APPDATA%/MiraTrade/settings.json`` (``{"risk": {...},
-    "broker": {...}}``). Unknown keys are rejected so a typo can't silently disable a limit."""
+    """The settings in force.
+
+    Called with **no path** this is whatever the app and the web front-end are both looking at: the
+    ``settings`` table of the market database, seeded once from ``settings.json``. Called with a
+    path it reads that file and nothing else, which is what the migration and the tests want.
+
+    Reading a file: defaults overlaid with ``{"risk": {...}, "broker": {...}}``. Unknown keys are
+    rejected, so a typo cannot silently disable a limit.
+    """
     import json
 
+    if path is None:
+        from miratrade import prefs          # here, not at the top: prefs reads this module
+
+        return prefs.load()
     cfg = Config()
-    path = path or APP_DIR / "settings.json"
     if not path.exists():
         return cfg
     data = json.loads(path.read_text(encoding="utf-8"))

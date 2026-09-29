@@ -1,27 +1,38 @@
-"""Scanner: everything collected, as it was filed, narrowed by filters.
+"""Scanner: everything collected, as it was filed, narrowed by filters — and where it is collected.
 
 This screen deliberately judges nothing. It shows the rows in the shared market database and lets
 them be narrowed, sorted, checked against the original document and exported. Signals turns events
 into evidence and a contract; Reports validates rules over five years; the Scanner is where you go to
 see what the data actually says before any of that.
 
+**Downloading lives here, and only here.** It used to be a button on Signals, which made every
+screen a potential download: pressing «search» could mean waiting minutes for the SEC, and nobody
+could tell beforehand which it would be. Now the flow reads in one direction — the Scanner brings
+data in, the other screens work over what is already in. They say when it is old (see
+:mod:`miratrade.freshness`) and send you here; they never fetch behind your back.
+
 Filtering runs in SQL, so changing a dropdown re-queries rather than re-reading a file: with three
 quarters of a million price bars stored, that is what keeps the screen answering immediately.
 """
 from __future__ import annotations
 
+import sys
 import webbrowser
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QHBoxLayout, QLabel,
-                              QLineEdit, QMessageBox, QPushButton, QSpinBox, QVBoxLayout, QWidget)
+from PySide6.QtCore import QProcess, Qt, QTimer, Signal
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFrame, QHBoxLayout,
+                              QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QSpinBox,
+                              QVBoxLayout, QWidget)
 
 from miratrade import scanner
+from miratrade.app import data as app_data
 from miratrade.app import theme
 from miratrade.app.i18n import t
 from miratrade.app.widgets import fit_columns, fmt_date, fmt_num, muted, table
+from miratrade.config import MIN_AUTO_REFRESH_MINUTES
 
 
 def store_path() -> str:
@@ -44,23 +55,79 @@ def _combo(choices, on_change, width: int = 0) -> QComboBox:
 
 
 class ScannerPage(QWidget):
-    def __init__(self, db=None, settings_path: Path | None = None):
+    # The other screens listen: new rows mean their own view is out of date.
+    downloaded = Signal()
+    open_settings = Signal()
+    use_research = Signal()
+
+    def __init__(self, db=None, settings_path: Path | None = None, scan_dir: Path | None = None):
         super().__init__()
         self.setObjectName("page")
         self._db = db
         self._owns_db = db is None
+        self.settings_path = Path(settings_path or app_data.SETTINGS_PATH)
+        self.scan_dir = Path(scan_dir or app_data.SCAN_DIR)
         self.rows = pd.DataFrame()
         self.trouble = ""                    # why the database could not be read, if it could not
         self._widths_touched = False         # once a column is dragged, the widths are the reader's
         self.right_aligned: set[str] = set()
         self.sort_by: str | None = None
         self.sort_desc = True
+        self.proc: QProcess | None = None
+        self.auto = QTimer(self)             # the unattended download; see _tick
+        self.auto.timeout.connect(self._tick)
 
         title = QLabel(t("Scanner"))
         title.setObjectName("h1")
         self.subtitle = muted(t("Everything collected, as it was filed. No strategy applied here."))
         self.stored = muted("")
         self.stored.setToolTip(t("Rows in the shared market database, and the days they cover."))
+
+        # ---------------------------------------------------------------- downloading
+        # The only place in the app that fetches. `window` is how far back to ask for; it is not the
+        # filter below it, which only decides what is drawn.
+        self.window = QSpinBox()
+        self.window.setRange(1, 365)
+        self.window.setValue(app_data.read_settings(self.settings_path).data.scan_days)
+        self.window.setPrefix(t("fetch "))
+        self.window.setSuffix(t(" days"))
+        self.window.setAccessibleName(t("How many days to download"))
+        self.window.setToolTip(t("How far back «Update data» asks for. Days already downloaded are "
+                                 "skipped, so this is cheap to raise."))
+        self.window.valueChanged.connect(self._window_changed)
+        self.download_btn = QPushButton(t("Update data"))
+        self.download_btn.setObjectName("primary")
+        self.download_btn.clicked.connect(self.start_download)
+        self.cancel_btn = QPushButton(t("Cancel"))
+        self.cancel_btn.clicked.connect(self.cancel_download)
+        self.cancel_btn.hide()
+        self.fresh = muted("")
+        self.fresh.setToolTip(t("How far behind the stored data is. Measured on what was downloaded, "
+                                "not on what was found: a quiet day and a day nobody asked about are "
+                                "not the same thing."))
+        self.log = QPlainTextEdit()
+        self.log.setReadOnly(True)
+        self.log.setMaximumHeight(120)
+        self.log.hide()
+
+        # Says up front whether a download can even get prices, instead of failing minutes in.
+        self.source_msg = QLabel("")
+        self.source_msg.setWordWrap(True)
+        self.source_btn = QPushButton(t("Open Settings"))
+        self.source_btn.clicked.connect(self.open_settings.emit)
+        self.research_btn = QPushButton(t("Use public web sources"))
+        self.research_btn.setToolTip(t("Yahoo / Stooq, for your personal research only, while you "
+                                       "have no broker account connected."))
+        self.research_btn.clicked.connect(self.use_research.emit)
+        self.banner = QFrame()
+        self.banner.setObjectName("banner")
+        b = QHBoxLayout(self.banner)
+        b.setContentsMargins(14, 10, 14, 10)
+        b.setSpacing(12)
+        b.addWidget(self.source_msg, 1)
+        b.addWidget(self.research_btn)
+        b.addWidget(self.source_btn)
+        self.banner.hide()
 
         # ---------------------------------------------------------------- filters
         self.source = _combo([(s.key, s.label) for s in scanner.SOURCES], self.source_changed, 190)
@@ -197,24 +264,156 @@ class ScannerPage(QWidget):
         foot.addWidget(self.export_btn)
 
         head = QHBoxLayout()
+        head.setSpacing(12)
         titles = QVBoxLayout()
         titles.setSpacing(2)
         titles.addWidget(title)
         titles.addWidget(self.subtitle)
         head.addLayout(titles)
         head.addStretch(1)
-        head.addWidget(self.stored)
+        for w in (self.fresh, self.window, self.download_btn, self.cancel_btn):
+            head.addWidget(w)
 
         body = QVBoxLayout(self)
         body.setContentsMargins(24, 20, 24, 20)
         body.setSpacing(12)
         body.addLayout(head)
+        body.addWidget(self.banner)
+        body.addWidget(self.log)
+        body.addWidget(self.stored)
         body.addWidget(bar_w)
         body.addWidget(self.note)
         body.addWidget(self.table, 1)
         body.addLayout(foot)
 
         self.source_changed()
+        self.refresh_auto()
+
+    # ------------------------------------------------------------------ downloading
+
+    def _window_changed(self, days: int) -> None:
+        """Remember how far back to fetch. It downloads nothing by itself: that is the button."""
+        cfg = app_data.read_settings(self.settings_path)
+        if cfg.data.scan_days != days:
+            cfg.data.scan_days = days
+            app_data.write_settings(cfg, self.settings_path)
+
+    def freshness(self):
+        from miratrade import freshness
+
+        db = self.db
+        return freshness.check(db) if db is not None else None
+
+    def refresh_freshness(self) -> None:
+        state = self.freshness()
+        if state is None:
+            self.fresh.setText("")
+            return
+        self.fresh.setText(state.say(t))
+        self.fresh.setStyleSheet(f"color: {theme.DOWN}" if state.stale else "")
+
+    def refresh_source(self) -> None:
+        """Whether a download could get prices right now, checked without downloading anything.
+
+        Worth doing before the button is pressed: the SEC part of a scan takes minutes, and finding
+        out afterwards that there is nowhere to get prices from wastes all of it.
+        """
+        from miratrade.data.prices import source_ready
+
+        try:
+            ok, why = source_ready(app_data.read_settings(self.settings_path).data.price_source,
+                                   translate=t)
+        except Exception as e:
+            ok, why = False, t("Could not check the price source: {error}", error=e)
+        self.banner.setVisible(not ok)
+        self.source_msg.setText(t("{reason} Without prices a download cannot start.", reason=why))
+        self.download_btn.setEnabled(ok and self.proc is None)
+        self.download_btn.setToolTip("" if ok else why)
+        d = app_data.read_settings(self.settings_path).data
+        if not self.auto.isActive():
+            self.download_btn.setText(t("Update data"))
+        elif self.in_refresh_window():
+            self.download_btn.setText(t("Update data · automatic every {minutes} min",
+                                        minutes=d.auto_refresh_minutes))
+        else:
+            self.download_btn.setText(t("Update data · automatic paused"))
+
+    def in_refresh_window(self) -> bool:
+        """Whether the clock is inside the New York window where filings actually arrive."""
+        from miratrade.scan import within_window
+
+        d = app_data.read_settings(self.settings_path).data
+        return within_window(pd.Timestamp.now(tz="UTC"), d.auto_refresh_from, d.auto_refresh_to,
+                             d.auto_refresh_weekdays_only)
+
+    def _tick(self) -> None:
+        """One turn of the unattended download: only when the last one has finished, prices can be
+        had, and New York is still filing. Outside that there is nothing new to find."""
+        if self.proc is None and self.download_btn.isEnabled() and self.in_refresh_window():
+            self.start_download()
+
+    def refresh_auto(self) -> None:
+        minutes = app_data.read_settings(self.settings_path).data.auto_refresh_minutes
+        if minutes and minutes >= MIN_AUTO_REFRESH_MINUTES:
+            self.auto.start(int(minutes) * 60_000)
+        else:
+            self.auto.stop()
+        self.refresh_source()
+
+    def start_download(self) -> None:
+        if self.proc is not None:
+            return
+        self.proc = QProcess(self)
+        self.proc.setProcessChannelMode(QProcess.MergedChannels)
+        self.proc.readyReadStandardOutput.connect(self._read_output)
+        self.proc.finished.connect(lambda code, _status: self._download_finished(code))
+        self.log.clear()
+        self.log.show()
+        self.download_btn.setEnabled(False)
+        self.cancel_btn.show()
+        days = self.window.value()
+        self.fresh.setText(t("Downloading the last {days} days…", days=days))
+        self.fresh.setStyleSheet("")
+        # "all" sizes on purpose: the size filter is a view, and downloading only the tier chosen
+        # today would silently leave a hole the day it is widened.
+        self.proc.start(sys.executable,
+                        app_data.scan_command(days, "call45_40", self.scan_dir, None, "all"))
+
+    def _read_output(self) -> None:
+        text = bytes(self.proc.readAllStandardOutput()).decode("utf-8", "replace")
+        for line in text.splitlines():
+            if line.strip():
+                self.log.appendPlainText(line)
+
+    def _download_finished(self, code: int) -> None:
+        self.proc = None
+        self.cancel_btn.hide()
+        self.refresh_source()
+        if code == 0:
+            self.log.hide()
+            if self._owns_db:
+                self.reopen_db()              # the download wrote rows this connection cannot see
+            self.reload()
+            self.downloaded.emit()
+        else:
+            self.fresh.setText(t("The download ended with an error (code {code}). Check the log.",
+                                 code=code))
+            self.fresh.setStyleSheet(f"color: {theme.DOWN}")
+
+    def cancel_download(self) -> None:
+        if self.proc is not None:
+            self.proc.kill()
+            self.fresh.setText(t("Cancelled. What was downloaded is kept."))
+
+    def reopen_db(self) -> None:
+        """A read-only WAL connection may still be looking at the snapshot it opened with, so after
+        a download it is dropped and taken again."""
+        if self._db is not None:
+            try:
+                self._db.close()
+            except Exception:
+                pass
+        self._db = None
 
     # ------------------------------------------------------------------ data
 
@@ -297,10 +496,11 @@ class ScannerPage(QWidget):
     def reload(self) -> None:
         source = self.current
         db = self.db
+        self.refresh_freshness()
         if db is None:                               # nothing to read: checked before it is used,
             self.nothing_to_show(                    # or pandas reports it as a NoneType error
-                t("Nothing downloaded yet. Press «Update data» under Signals, or run "
-                  "`miratrade scan`. It is stored in {path}.", path=store_path())
+                t("Nothing downloaded yet. Press «Update data» above. It is stored in {path}.",
+                  path=store_path())
                 if not self.trouble else
                 t("Could not read {path}: {error}", path=store_path(), error=self.trouble))
             return
@@ -313,9 +513,16 @@ class ScannerPage(QWidget):
             return
         self.apply_sort()
         if not len(self.rows):
-            self.count.setText(t("Nothing collected for these filters yet. The Reports screen "
-                                 "downloads Form 4 filings and prices; `miratrade congress trades` "
-                                 "brings congressional disclosures."))
+            # "nothing has ever been collected" and "nothing matches what you asked for" are
+            # different problems with different answers, and one message for both sends a person
+            # downloading again when the filters were the whole trouble.
+            if self.rows_in_source(db, source):
+                self.count.setText(t("Nothing matches these filters. «Clear filters» puts them back."))
+            else:
+                self.count.setText(t("Nothing collected here yet. «Update data» brings Form 4 "
+                                     "filings, 13D/G and prices; `miratrade congress trades` brings "
+                                     "congressional disclosures. It is stored in {path}.",
+                                     path=store_path()))
         elif stored > len(self.rows):
             self.count.setText(t("{shown} of {total} rows — narrow the filters to see the rest",
                                  shown=fmt_num(len(self.rows), 0), total=fmt_num(stored, 0)))
@@ -325,6 +532,14 @@ class ScannerPage(QWidget):
         self.export_btn.setEnabled(bool(len(self.rows)))
         self.stored.setText(" · ".join(t("{label}: {count}", label=t(label), count=fmt_num(n, 0))
                                        for label, n, _a, _b in scanner.summary(self.db) if n))
+
+    @staticmethod
+    def rows_in_source(db, source) -> int:
+        """How many rows this source holds with no filter at all. 0 means nothing was ever fetched."""
+        try:
+            return scanner.total(db, source, scanner.Filters(days=0, start=date(1900, 1, 1)))
+        except Exception:
+            return 0
 
     def nothing_to_show(self, why: str) -> None:
         """Empty the table and say why in one place, so no branch can forget half of it."""

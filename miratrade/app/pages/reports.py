@@ -27,6 +27,7 @@ RULE_HEADERS = {"rule": "Rule", "train_n": "Discovery n", "train_avg_r": "Discov
 
 class ReportsPage(QWidget):
     report_finished = Signal(str)
+    go_to_scanner = Signal()            # "the data is old": the Scanner is where it is fetched
 
     def __init__(self, reports_dir: Path | None = None, settings_path: Path | None = None):
         super().__init__()
@@ -47,12 +48,21 @@ class ReportsPage(QWidget):
         self.cap = data.cap_combo(data.read_settings(self.settings_path).data.cap_tier, self._cap_changed)
         self.run_btn = QPushButton(t("Run analysis"))
         self.run_btn.setObjectName("primary")
+        self.run_btn.setToolTip(t("Backtests the stored data under the current settings. It never "
+                                  "downloads: the Scanner does that."))
         self.run_btn.clicked.connect(self.start_analysis)
         self.cancel_btn = QPushButton(t("Cancel"))
         self.cancel_btn.clicked.connect(self.cancel_analysis)
         self.cancel_btn.hide()
-        self.status = muted(t("The first time it downloads SEC and FINRA data and can take hours. "
-                              "Everything is cached and you can keep using the app."))
+        self.status = muted(t("Simulates every event in the stored data and looks for rules that "
+                              "survive out of sample. Minutes, not hours: nothing is downloaded."))
+        # Says how old the stored data is. An analysis is only ever as current as what it read, and
+        # a report that does not say so gets quoted later as though it covered today.
+        self.fresh = muted("")
+        self.fresh_btn = QPushButton(t("Go to Scanner"))
+        self.fresh_btn.setToolTip(t("The Scanner is the only screen that downloads."))
+        self.fresh_btn.clicked.connect(self.go_to_scanner.emit)
+        self.fresh_btn.hide()
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(2000)
@@ -64,7 +74,8 @@ class ReportsPage(QWidget):
         self.history.setTextElideMode(Qt.ElideNone)
         self.history.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.history.currentItemChanged.connect(self._show_selected)
-        for w in (title, self.days, self.cap, self.run_btn, self.cancel_btn, self.status, self.log, hist):
+        for w in (title, self.days, self.cap, self.run_btn, self.cancel_btn, self.status,
+                  self.fresh, self.fresh_btn, self.log, hist):
             left.addWidget(w)
         left.addWidget(self.history, 1)
         left_box = QWidget()
@@ -167,7 +178,30 @@ class ReportsPage(QWidget):
 
     # ------------------------------------------------------------------ history
 
+    def refresh_freshness(self) -> None:
+        """How old the data an analysis would read is.
+
+        Shown before the run, not after: a report is only ever as current as what it read, and one
+        that does not say so gets quoted months later as though it covered today.
+        """
+        from miratrade import freshness, store
+
+        try:
+            db = store.connect(read_only=True)
+        except Exception:
+            self.fresh.setText("")
+            self.fresh_btn.hide()
+            return
+        try:
+            state = freshness.check(db)
+        finally:
+            db.close()
+        self.fresh.setText(state.say(t))
+        self.fresh.setStyleSheet(f"color: {theme.DOWN}" if state.stale else "")
+        self.fresh_btn.setVisible(state.stale)
+
     def refresh(self, select: str | None = None) -> None:
+        self.refresh_freshness()
         self.history.clear()
         for info in data.list_reports(self.reports_dir):
             item = QListWidgetItem(f"{info.name}\n{info.summary}")
@@ -217,8 +251,9 @@ class ReportsPage(QWidget):
         self.log.show()
         self.run_btn.setEnabled(False)
         self.cancel_btn.show()
-        self.status.setText(t("Analysing {days} days…", days=self.days.value()))
-        self.proc.start(sys.executable, data.analyze_command(self.days.value(), out, self.cap.currentData()))
+        self.status.setText(t("Analysing {days} days of stored data…", days=self.days.value()))
+        self.proc.start(sys.executable,
+                        data.offline_analysis_command(self.days.value(), out, self.cap.currentData()))
 
     def _cap_changed(self, tier: str) -> None:
         data.set_cap_tier(tier, self.settings_path)

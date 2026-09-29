@@ -124,23 +124,24 @@ def load_report(path: Path) -> dict:
 
 # --------------------------------------------------------------------------- settings
 
-def read_settings(path: Path = SETTINGS_PATH) -> Config:
-    return load_user_config(path)
+def read_settings(path: Path = SETTINGS_PATH, db=None) -> Config:
+    """The settings in force. They live in the market database (see :mod:`miratrade.prefs`); the
+    file is where they came from the first time, and the fallback when the store cannot be read."""
+    from miratrade import prefs
+
+    return prefs.load(db=db, json_path=path)
 
 
-def write_settings(cfg: Config, path: Path = SETTINGS_PATH) -> None:
-    """Save the user-editable sections; re-read to make sure the file is valid."""
-    from dataclasses import asdict
+def write_settings(cfg: Config, path: Path = SETTINGS_PATH, db=None) -> None:
+    """Save every user-editable section to the store, and mirror it to the file.
 
-    # The sections a person edits from the Settings screen. A section left out here is silently
-    # forgotten on the next save, however carefully the screen filled it in.
-    data = {"risk": asdict(cfg.risk), "broker": asdict(cfg.broker), "data": asdict(cfg.data),
-            "ui": asdict(cfg.ui), "notify": asdict(cfg.notify)}
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    load_user_config(tmp)                   # raises if something is off; the old file stays
-    tmp.replace(path)
+    Which sections those are is :data:`miratrade.prefs.USER_SECTIONS`, in one place: a section
+    listed in one saver and not the other is silently forgotten, however carefully a screen filled
+    it in — which is what used to happen to ``notify``.
+    """
+    from miratrade import prefs
+
+    prefs.save(cfg, db=db, json_path=path)
 
 
 def analyze_command(days: int, out: Path, cap: str = "all", extra: list[str] | None = None) -> list[str]:
@@ -155,6 +156,18 @@ def scan_command(days: int, variant: str, save: Path, report: Path | None = None
     return ["-X", "utf8", "-W", "ignore", "-m", "miratrade.cli", "scan", "--days", str(days),
             "--variant", variant, "--save", str(save), "--cap", cap,
             *(["--report", str(report)] if report else [])]
+
+
+def search_command(days: int, cap: str = "all", extra: list[str] | None = None) -> list[str]:
+    """Arguments for re-deriving the events from stored data. This one never downloads."""
+    return ["-X", "utf8", "-W", "ignore", "-m", "miratrade.cli", "reprocess", "--days", str(days),
+            "--cap", cap, *(extra or [])]
+
+
+def offline_analysis_command(days: int, out: Path, cap: str = "all") -> list[str]:
+    """Arguments for a backtest over stored data: the same analysis without the download."""
+    return ["-X", "utf8", "-W", "ignore", "-m", "miratrade.cli", "analyze", "--offline",
+            "--days", str(days), "--out", str(out), "--cap", cap]
 
 
 def quote_broker(path: Path = SETTINGS_PATH):

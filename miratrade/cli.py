@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 
 from miratrade.backtest import build_panel, run_trades
-from miratrade.config import CAP_TIERS, Config
+from miratrade.config import CAP_TIERS, Config, load_user_config
 from miratrade.edge import attach_walk_forward, mine_rules, prune_redundant, scan, walk_forward
 from miratrade.regimes import regime_baseline, regime_rules
 from miratrade.report import render
@@ -169,10 +169,24 @@ def load_inputs(days: int, end: date | None = None, max_insider_tickers: int = 1
 
 
 def cmd_analyze(a) -> None:
-    cfg = Config()
-    inp = load_inputs(a.days, date.fromisoformat(a.end) if a.end else None, a.max_insider_tickers,
-                      a.max_13d_tickers, a.tickers, a.flow, a.insiders_csv, a.prices_dir,
-                      not a.no_smart_money, cfg, cap_tier=a.cap)
+    cfg = load_user_config()
+    end = date.fromisoformat(a.end) if a.end else None
+    if getattr(a, "offline", False):
+        # The same analysis over data already downloaded. Retuning a rule should cost the
+        # simulation, not the download; see miratrade/reprocess.py.
+        from miratrade import store
+        from miratrade.reprocess import stored_inputs
+
+        db = store.connect()
+        try:
+            print(f"Reading {a.days} days out of the store. Nothing is downloaded.")
+            inp = stored_inputs(db, a.days, end, cfg, a.max_insider_tickers, a.max_13d_tickers,
+                                cap_tier=a.cap)
+        finally:
+            db.close()
+    else:
+        inp = load_inputs(a.days, end, a.max_insider_tickers, a.max_13d_tickers, a.tickers, a.flow,
+                          a.insiders_csv, a.prices_dir, not a.no_smart_money, cfg, cap_tier=a.cap)
     res = pipeline(inp["prices"], inp["insiders"], inp["flow"], pd.Timestamp(inp["start"]), Path(a.out), cfg,
                    universe=inp["universe"], ownership=inp["ownership"], short_volume=inp["short_volume"],
                    shares=inp["shares"])
@@ -318,6 +332,9 @@ def main(argv: list[str] | None = None) -> None:
                     help="skip 13D/13G and FINRA short-volume data")
     an.add_argument("--cap", choices=list(CAP_TIERS), default=None,
                     help="company size to keep (default: the app setting); saves download time")
+    an.add_argument("--offline", action="store_true",
+                    help="read the filings, bars and volumes from the store instead of downloading "
+                         "them: the same analysis under different settings, in minutes not hours")
     an.add_argument("--out", default="reports")
     an.set_defaults(func=cmd_analyze)
 

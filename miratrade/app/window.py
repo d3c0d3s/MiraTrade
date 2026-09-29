@@ -34,17 +34,25 @@ class MainWindow(QMainWindow):
 
         self.pages = QStackedWidget()
         self.signals = SignalsPage(reports_dir, scan_dir, settings_path=self.settings_path, db=db)
-        self.scanner = ScannerPage(db=db, settings_path=self.settings_path)
+        self.scanner = ScannerPage(db=db, settings_path=self.settings_path, scan_dir=scan_dir)
         self.practice = PracticePage(practice_path, scan_dir, self.settings_path)
         self.reports = ReportsPage(reports_dir, self.settings_path)
         self.settings = SettingsPage(self.settings_path, auth, etrade_auth)
         for w in (self.scanner, self.signals, self.reports, self.practice, self.settings):
             self.pages.addWidget(w)
         self.settings.settings_changed.connect(self.refresh_header)
-        self.settings.settings_changed.connect(self.signals.refresh_auto)     # source or timer changed
+        self.settings.settings_changed.connect(self.scanner.refresh_auto)     # source or timer changed
         self.settings.settings_changed.connect(self.signals.refresh_days)     # the window changed
-        self.signals.open_settings.connect(lambda: self.nav.button(PAGES.index("Settings")).click())
-        self.signals.use_research.connect(self.settings.enable_research_source)
+        self.scanner.open_settings.connect(lambda: self.nav.button(PAGES.index("Settings")).click())
+        self.scanner.use_research.connect(self.settings.enable_research_source)
+        # Downloading happens on one screen; every screen that reads is told when it has finished,
+        # so nothing keeps showing data that was replaced while it was on another tab.
+        self.scanner.downloaded.connect(self.signals.reopen_db)
+        self.scanner.downloaded.connect(self.signals.refresh)
+        self.scanner.downloaded.connect(self.reports.refresh_freshness)
+        self.scanner.downloaded.connect(self.practice.reload)
+        for page in (self.signals, self.reports):     # "the data is old" → the one screen that fetches
+            page.go_to_scanner.connect(lambda: self.nav.button(PAGES.index("Scanner")).click())
         self.signals.practice_added.connect(self.practice.reload)      # keep the journal in step
         self.reports.report_finished.connect(lambda _path: self.signals.refresh())   # fresher evidence
         self.reports.report_finished.connect(lambda _path: self.scanner.reload())
