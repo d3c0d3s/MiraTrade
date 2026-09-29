@@ -649,6 +649,144 @@ ES: dict[str, str] = {
         "Para qué perfil se muestran la evidencia y el contrato. Nunca descarga.",
     "yes": "sí",
     "no": "no",
+    # ------------------------------------------------- the parameter form itself
+    "Conditions…": "Condiciones…",
+    "Conditions": "Condiciones",
+    "What counts as an event, and what contract a profile buys. Changing them and searching again "
+    "is another test, and the form keeps the count.":
+        "Qué cuenta como evento, y qué contrato compra un perfil. Cambiarlas y volver a buscar es "
+        "otra prueba, y el formulario lleva la cuenta.",
+    "What counts as an event, and what contract a profile buys. Changing them and analysing again "
+    "is another test, and the form keeps the count.":
+        "Qué cuenta como evento, y qué contrato compra un perfil. Cambiarlas y volver a analizar es "
+        "otra prueba, y el formulario lleva la cuenta.",
+    "Conditions changed. Press «Search signals» to apply them.":
+        "Condiciones cambiadas. Pulsa «Buscar señales» para aplicarlas.",
+    "Conditions changed. Press «Run analysis» to apply them.":
+        "Condiciones cambiadas. Pulsa «Ejecutar análisis» para aplicarlas.",
+    "Could not open the settings: {error}": "No se pudieron abrir los ajustes: {error}",
+    "Save": "Guardar",
+    "Back to defaults": "Volver a los valores por defecto",
+    "changed · default {value}": "cambiado · por defecto {value}",
+    "Start the count again": "Empezar la cuenta otra vez",
+    "Use it when you genuinely begin a new line of research. It is a deliberate act with a date on "
+    "it, not a way to make the warning go away.":
+        "Úsalo cuando empieces de verdad una línea de investigación nueva. Es un acto deliberado y "
+        "con fecha, no una forma de quitar el aviso de en medio.",
+    "This forgets the {count} configurations tried so far. Do it when you are genuinely starting a "
+    "new line of research — not to make a result look better than it is.":
+        "Esto olvida las {count} configuraciones probadas hasta ahora. Hazlo cuando empieces de "
+        "verdad una línea de investigación nueva, no para que un resultado parezca mejor de lo que es.",
+    # The multiple-testing sentence (miratrade/attempts.py), said on the form and under a report.
+    "First configuration tried: a result means what it says.":
+        "Primera configuración probada: un resultado significa lo que dice.",
+    "{count} configurations tried. A result now needs p < {alpha} to mean what p < {plain} would "
+    "have meant on the first — about t = {t}. With this many tries, something clears {plain} by "
+    "luck alone {chance} % of the time.":
+        "{count} configuraciones probadas. Ahora un resultado necesita p < {alpha} para significar "
+        "lo que p < {plain} habría significado en la primera: aproximadamente t = {t}. Con tantos "
+        "intentos, algo supera {plain} solo por suerte el {chance} % de las veces.",
+    # ------------------------------------------- the parameter form (miratrade/params.py)
+    "Insider purchases":
+        "Compras de directivos",
+    "Form 4 code P: an open-market buy with the insider's own money. Awards, exercises and gifts are never counted, whatever these say.":
+        "Form 4 con código P: una compra en mercado con el dinero del propio directivo. Las concesiones, los ejercicios y las donaciones no cuentan nunca, digan lo que digan estos ajustes.",
+    "Smallest purchase that counts":
+        "Compra más pequeña que cuenta",
+    "Below this, a director buying a few hundred dollars of stock is noise. Raising it keeps the purchases somebody had to think about — and drops most of the events.":
+        "Por debajo de esto, un consejero comprando unos cientos de dólares es ruido. Subirlo deja las compras que alguien tuvo que pensarse, y deja fuera la mayoría de los eventos.",
+    "Days that make a cluster":
+        "Días que forman un clúster",
+    "Several insiders buying within this many days of each other is treated as one decision by the people who know the company, not as several unrelated ones.":
+        "Varios directivos comprando con esta diferencia de días se trata como una sola decisión de quienes conocen la empresa, no como varias sin relación.",
+    "How long a purchase keeps counting":
+        "Cuánto tiempo sigue contando una compra",
+    "A filing stays 'active' this long. Longer finds more events per company and makes each one mean less; shorter is stricter about what is recent.":
+        "Una presentación sigue «activa» este tiempo. Más largo encuentra más eventos por empresa y hace que cada uno signifique menos; más corto es más estricto con lo que es reciente.",
+    "Unusual option flow":
+        "Flujo de opciones inusual",
+    "Volume above open interest means positions being opened, not closed. Chains are only read for days that were captured.":
+        "Volumen por encima del interés abierto significa posiciones que se abren, no que se cierran. Las cadenas solo se leen de los días que se capturaron.",
+    "Smallest print":
+        "Operación más pequeña",
+    "The total paid for one print. Small prints are retail; the premise of this signal is somebody putting real money on a short clock.":
+        "El total pagado en una sola operación. Las pequeñas son minoristas; la premisa de esta señal es alguien poniendo dinero de verdad con poco tiempo por delante.",
+    "Volume over open interest":
+        "Volumen sobre interés abierto",
+    "Above 1, more contracts traded today than were open at the start: new positions. Under 1 it can all be closing.":
+        "Por encima de 1, hoy se han negociado más contratos de los que había abiertos al empezar: posiciones nuevas. Por debajo de 1 puede ser todo cierre.",
+    "Least open interest":
+        "Interés abierto mínimo",
+    "A contract with almost no open interest gives a spectacular ratio on almost no money. This is the floor under the arithmetic.":
+        "Un contrato casi sin interés abierto da un ratio espectacular con casi nada de dinero. Esto es el suelo de esa cuenta.",
+    "Longest expiry":
+        "Vencimiento más largo",
+    "Short-dated is more time-sensitive and usually more conviction; it is also where hedging lives, so this cuts both ways.":
+        "El plazo corto es más sensible al tiempo y suele ser más convicción; también es donde vive la cobertura, así que corta por los dos lados.",
+    "Furthest out of the money":
+        "Máximo fuera del dinero",
+    "Strikes beyond this are lottery tickets. 0.15 = 15 % above the share price.":
+        "Los strikes más allá de esto son billetes de lotería. 0,15 = 15 % por encima del precio de la acción.",
+    "Smart money":
+        "Dinero institucional",
+    "13D means an active stake with intent; 13G is usually an index fund crossing 5 % mechanically. FINRA's off-exchange volume is not short interest.":
+        "Un 13D es una participación activa con intención; un 13G suele ser un fondo indexado cruzando el 5 % de forma mecánica. El volumen fuera de mercado de FINRA no es interés en corto.",
+    "How long a filing keeps counting":
+        "Cuánto tiempo sigue contando una presentación",
+    "As with insiders: how long a new stake stays an active event.":
+        "Como con los directivos: cuánto tiempo una participación nueva sigue siendo un evento activo.",
+    "Entry and exits":
+        "Entrada y salidas",
+    "Every event is traded the same way, so that the conditions around it can be compared. These are multiples of the stock's own volatility (ATR), not fixed percentages: a 5 % stop means something different on a utility and on a biotech.":
+        "Todos los eventos se operan igual, para poder comparar las condiciones que los rodean. Son múltiplos de la volatilidad del propio valor (ATR), no porcentajes fijos: un stop del 5 % no significa lo mismo en una eléctrica que en una biotecnológica.",
+    "Stop, in ATR":
+        "Stop, en ATR",
+    "Below this much of the daily range, the trade is wrong. Tighter stops out more often on noise alone.":
+        "Por debajo de esta parte del rango diario, la operación está equivocada. Más ajustado salta más veces solo por ruido.",
+    "Target, in ATR":
+        "Objetivo, en ATR",
+    "Where it is taken. Together with the stop this sets how often it has to work to pay.":
+        "Dónde se recoge. Junto con el stop, fija cuántas veces tiene que salir bien para ganar.",
+    "Time stop":
+        "Stop por tiempo",
+    "Sessions after which it is closed whatever it is doing. Capital held in a trade that is going nowhere is capital.":
+        "Sesiones tras las cuales se cierra haga lo que haga. El capital retenido en una operación que no va a ninguna parte es capital.",
+    " sessions":
+        " sesiones",
+    "Cheapest share":
+        "Acción más barata",
+    "Signals on shares under this are skipped: they are thin, the spread is a large part of the price, and most have no usable option market at all.":
+        "Las señales en acciones por debajo de esto se saltan: son estrechas, el spread es una parte grande del precio y la mayoría no tiene un mercado de opciones utilizable.",
+    "Contract":
+        "Contrato",
+    "What a profile buys when the instrument is an option. Prices in the backtest are modelled from the stock, never quotes.":
+        "Lo que compra un perfil cuando el instrumento es una opción. Los precios del backtest están modelados a partir de la acción, nunca son cotizaciones.",
+    "How much of the share's move the option follows. 0.75–0.85 behaves like the stock with leverage; 0.30 is mostly a lottery ticket with a deadline.":
+        "Cuánto del movimiento de la acción sigue la opción. 0,75-0,85 se comporta como la acción con apalancamiento; 0,30 es sobre todo un billete de lotería con fecha límite.",
+    "Days to expiry":
+        "Días hasta el vencimiento",
+    "Longer costs more and decays slower. If an effect takes two months, a 30-day call cannot express it.":
+        "Más largo cuesta más y se deteriora más despacio. Si un efecto tarda dos meses, una call a 30 días no puede expresarlo.",
+    "Never closer than":
+        "Nunca más cerca de",
+    "A contract is not chosen inside this many days of expiry, where decay is fastest and a few quiet sessions cost more than the move is worth.":
+        "No se elige un contrato a menos de estos días del vencimiento, donde el deterioro es más rápido y unas pocas sesiones tranquilas cuestan más de lo que vale el movimiento.",
+    "Tradeable at all":
+        "Operable siquiera",
+    "A signal you cannot get filled on is not a signal. These are checked against the stored chain, and the verdict says so plainly on the contract card.":
+        "Una señal que no puedes ejecutar no es una señal. Esto se comprueba contra la cadena guardada, y el veredicto lo dice con claridad en la ficha del contrato.",
+    "Widest spread":
+        "Spread máximo",
+    "Bid to ask as a percentage of the mid. You pay half of it getting in and half getting out.":
+        "De la demanda a la oferta, como porcentaje del punto medio. Pagas la mitad al entrar y la mitad al salir.",
+    " %":
+        " %",
+    "How many contracts are open. Thin contracts move on your own order.":
+        "Cuántos contratos hay abiertos. Los contratos estrechos se mueven con tu propia orden.",
+    "Most of the target the round trip may eat":
+        "Máximo del objetivo que puede comerse la ida y vuelta",
+    "The backtest charged no spread. If getting in and out costs a third of what you were aiming for, the edge it measured was never there to take.":
+        "El backtest no cobró spread. Si entrar y salir cuesta un tercio de lo que buscabas, la ventaja que midió nunca estuvo ahí para cogerla.",
     # ------------------------------------------------- downloading: only the Scanner does it
     "fetch ": "traer ",
     "How many days to download": "Cuántos días descargar",

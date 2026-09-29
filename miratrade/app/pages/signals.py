@@ -279,6 +279,11 @@ class SignalsPage(QWidget):
         self.variant.setToolTip(t("Which profile the evidence and the contract are shown for. It "
                                   "never downloads."))
         self.variant.currentIndexChanged.connect(lambda _: self._show_selected(self.list.currentItem()))
+        self.params_btn = QPushButton(t("Conditions…"))
+        self.params_btn.setToolTip(t("What counts as an event, and what contract a profile buys. "
+                                     "Changing them and searching again is another test, and the "
+                                     "form keeps the count."))
+        self.params_btn.clicked.connect(self.open_params)
         self.scan_btn = QPushButton(t("Search signals"))
         self.scan_btn.setObjectName("primary")
         self.scan_btn.setToolTip(t("Finds the events in the stored data under the current settings. "
@@ -296,7 +301,7 @@ class SignalsPage(QWidget):
         bar.addLayout(titles)
         bar.addStretch(1)
         for w in (muted(t("Profile")), self.variant, muted(t("Size")), self.cap, self.days,
-                  self.scan_btn, self.cancel_btn):
+                  self.params_btn, self.scan_btn, self.cancel_btn):
             bar.addWidget(w)
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
@@ -787,6 +792,32 @@ class SignalsPage(QWidget):
             + t("Cost {cost} $ · risk to the stop {risk} $.", cost=f"{trade.cost:,.0f}",
                 risk=f"{trade.risk:,.0f}") + "\n"
             + t("No real money; you will see it on the Practice screen."))
+
+    # ------------------------------------------------------------------ the conditions
+
+    def open_params(self) -> None:
+        """The settings that decide what an event is, and what contract follows from it.
+
+        Opened with a writable connection of its own: this screen's usual one is read-only, which is
+        the right default for a screen that only reads and the wrong one for a form that saves.
+        """
+        from miratrade import store
+        from miratrade.app.pages.paramform import ParamForm
+        from miratrade.params import ALL_GROUPS
+
+        try:
+            db = store.connect()
+        except Exception as e:
+            QMessageBox.warning(self, t("Conditions"),
+                                t("Could not open the settings: {error}", error=e))
+            return
+        try:
+            form = ParamForm(ALL_GROUPS, db, title="Conditions", kind="search", parent=self)
+            if form.exec():
+                self.cfg = data.read_settings(self.settings_path)
+                self.meta.setText(t("Conditions changed. Press «Search signals» to apply them."))
+        finally:
+            db.close()
 
     # ------------------------------------------------------------------ searching stored data
 

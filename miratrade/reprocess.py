@@ -239,7 +239,12 @@ def _reprocess(db, days, end, cfg, cap_tier, log, write) -> dict:
     log("  " + ", ".join(f"{n:,} {name}" for name, n in have.items()))
 
     tickers = candidates(src, since, cfg)
-    tier = cap_tier if cap_tier is not None else cfg.data.cap_tier
+    # **"all" unless asked otherwise, and deliberately not `cfg.data.cap_tier`.** Company size is a
+    # *view*: the screens filter the stored events by it on read. Applying the saved tier here too
+    # would filter twice — the events table would only ever hold the tier that was in force when it
+    # was last built, and widening the dropdown would show nothing until somebody re-ran the whole
+    # thing. (Not hypothetical: a run under a saved `mega` cut a stored 418 events to 2.)
+    tier = cap_tier if cap_tier is not None else "all"
     if tier != "all" and tickers:
         from miratrade.data.fundamentals import cap_from_filings, filter_by_tier, tier_report
 
@@ -268,10 +273,22 @@ def _reprocess(db, days, end, cfg, cap_tier, log, write) -> dict:
     log(f"{len(events)} events under these settings.")
 
     out = {"events": events, "since": since, "end": end, "tickers": sorted(tickers), "have": have,
-           "replaced": 0, "written": 0}
+           "replaced": 0, "written": 0, "attempts": 0}
     if write:
         out["replaced"], out["written"] = replace_events(db, events, since, end)
         log(f"  {out['written']} written, {out['replaced']} older ones in the window removed.")
+        # Every distinct configuration that produced a result is remembered, because the number of
+        # settings a result was chosen from is what decides whether it means anything. Re-running
+        # the same ones updates a row rather than adding one. See miratrade/attempts.py.
+        try:
+            from miratrade import attempts
+
+            total, fresh = attempts.record(db, cfg, "search", days=days, events=len(events))
+            out["attempts"] = total
+            if fresh and total > 1:
+                log("  " + attempts.say(total))
+        except Exception as e:          # counting must never be the reason a search fails
+            log(f"  could not record the attempt: {e}")
     return out
 
 

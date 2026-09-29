@@ -21,7 +21,7 @@ writes that second app.
 """
 from __future__ import annotations
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 # Ordinary tables, created in this order.
 TABLES: dict[str, str] = {
@@ -45,6 +45,27 @@ TABLES: dict[str, str] = {
             value      TEXT NOT NULL,      -- JSON-encoded value
             updated_at TEXT NOT NULL,
             PRIMARY KEY (section, key)
+        )""",
+    # Every distinct configuration of the rules that has been searched or backtested. This is what
+    # keeps a parameter form honest: try enough thresholds and one of them looks good on any data,
+    # and the problem lives in the history, which nobody remembers. See miratrade/attempts.py.
+    #
+    # `fingerprint` is a hash of the sections that decide what counts as an event, so re-running the
+    # same settings updates a row instead of adding one — repeating an experiment is not a new
+    # hypothesis, and counting it would make the correction meaninglessly harsh.
+    "attempts": """
+        CREATE TABLE IF NOT EXISTS attempts (
+            id          INTEGER PRIMARY KEY,
+            kind        TEXT NOT NULL,      -- search | analysis: different questions, separate counts
+            fingerprint TEXT NOT NULL,
+            settings    TEXT NOT NULL,      -- JSON of the sections that were tested
+            at          TEXT NOT NULL,      -- when this configuration was first tried
+            last_at     TEXT NOT NULL,
+            runs        INTEGER NOT NULL DEFAULT 1,
+            days        INTEGER,
+            events      INTEGER,
+            note        TEXT,
+            UNIQUE (kind, fingerprint)
         )""",
     # Which days (or tickers) have already been downloaded per source, so a run fetches only the
     # gaps. A row means "asked and answered", including an answer of nothing at all — without that

@@ -58,6 +58,8 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
     # Version 5 only adds the `settings` table, which the DDL above creates on its own. The version
     # still steps, because a reader has to know whether the file it opened can hold settings at all.
     4: (),
+    # …and version 6 the `attempts` table, the same way.
+    5: (),
 }
 
 

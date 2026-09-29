@@ -46,6 +46,11 @@ class ReportsPage(QWidget):
         self.days.setSuffix(t(" days"))
         self.days.setAccessibleName(t("Length of the analysis in days"))
         self.cap = data.cap_combo(data.read_settings(self.settings_path).data.cap_tier, self._cap_changed)
+        self.params_btn = QPushButton(t("Conditions…"))
+        self.params_btn.setToolTip(t("What counts as an event, and what contract a profile buys. "
+                                     "Changing them and analysing again is another test, and the "
+                                     "form keeps the count."))
+        self.params_btn.clicked.connect(self.open_params)
         self.run_btn = QPushButton(t("Run analysis"))
         self.run_btn.setObjectName("primary")
         self.run_btn.setToolTip(t("Backtests the stored data under the current settings. It never "
@@ -74,8 +79,8 @@ class ReportsPage(QWidget):
         self.history.setTextElideMode(Qt.ElideNone)
         self.history.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.history.currentItemChanged.connect(self._show_selected)
-        for w in (title, self.days, self.cap, self.run_btn, self.cancel_btn, self.status,
-                  self.fresh, self.fresh_btn, self.log, hist):
+        for w in (title, self.days, self.cap, self.params_btn, self.run_btn, self.cancel_btn,
+                  self.status, self.fresh, self.fresh_btn, self.log, hist):
             left.addWidget(w)
         left.addWidget(self.history, 1)
         left_box = QWidget()
@@ -177,6 +182,28 @@ class ReportsPage(QWidget):
         return pct / 100, stops.get(pct, 0.25)
 
     # ------------------------------------------------------------------ history
+
+    def open_params(self) -> None:
+        """The same conditions Signals edits, counted separately: searching and backtesting are
+        different questions, and neither should inflate the other's count of attempts."""
+        from PySide6.QtWidgets import QMessageBox
+
+        from miratrade import store
+        from miratrade.app.pages.paramform import ParamForm
+        from miratrade.params import ALL_GROUPS
+
+        try:
+            db = store.connect()
+        except Exception as e:
+            QMessageBox.warning(self, t("Conditions"),
+                                t("Could not open the settings: {error}", error=e))
+            return
+        try:
+            form = ParamForm(ALL_GROUPS, db, title="Conditions", kind="analysis", parent=self)
+            if form.exec():
+                self.status.setText(t("Conditions changed. Press «Run analysis» to apply them."))
+        finally:
+            db.close()
 
     def refresh_freshness(self) -> None:
         """How old the data an analysis would read is.

@@ -159,7 +159,12 @@ def scan_command(days: int, variant: str, save: Path, report: Path | None = None
 
 
 def search_command(days: int, cap: str = "all", extra: list[str] | None = None) -> list[str]:
-    """Arguments for re-deriving the events from stored data. This one never downloads."""
+    """Arguments for re-deriving the events from stored data. This one never downloads.
+
+    ``cap`` is "all" and the screen does not pass its own: size narrows what is *shown*, and
+    filtering here as well would mean the stored events only ever hold the tier that was selected
+    when they were last built.
+    """
     return ["-X", "utf8", "-W", "ignore", "-m", "miratrade.cli", "reprocess", "--days", str(days),
             "--cap", cap, *(extra or [])]
 

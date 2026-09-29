@@ -168,6 +168,26 @@ def load_inputs(days: int, end: date | None = None, max_insider_tickers: int = 1
             "short_volume": short_volume, "shares": shares, "universe": universe, "start": start, "end": end}
 
 
+def record_attempt(cfg: Config, kind: str, days: int | None = None) -> str:
+    """Remember this configuration and say what the count means, under the report.
+
+    Directly under the numbers on purpose. A backtest that finds a rule is only as good as the
+    number of different rule sets it was chosen from, and that number belongs beside the result
+    rather than in a place somebody has to think to look.
+    """
+    try:
+        from miratrade import attempts, store
+
+        db = store.connect()
+        try:
+            total, _fresh = attempts.record(db, cfg, kind, days=days)
+        finally:
+            db.close()
+        return attempts.say(total)
+    except Exception as e:              # counting must never be the reason an analysis fails
+        return f"(could not record the attempt: {e})"
+
+
 def cmd_analyze(a) -> None:
     cfg = load_user_config()
     end = date.fromisoformat(a.end) if a.end else None
@@ -192,6 +212,7 @@ def cmd_analyze(a) -> None:
                    shares=inp["shares"])
     print(res.get("report", "No trades generated."))
     print(f"\nWrote {a.out}/edge_report.md, trades.csv, rules.csv, candidates.csv, walk_forward.csv")
+    print("\n" + record_attempt(cfg, "analysis", a.days))
 
 
 def cmd_experiment(a) -> None:
