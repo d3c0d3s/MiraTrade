@@ -35,17 +35,17 @@ def test_evidence_narrows_while_enough_events_remain():
     assert e.similar_to == ["ins:exec_buy"] and e.n == 40
     assert e.target == 0.75 and e.stop == 0.25 and e.neither == 0
     assert round(e.mean_return, 4) == round(0.75 * 0.4 - 0.25 * 0.25, 4)
-    assert e.sentence == ("40 eventos parecidos: 75 % llegó antes al objetivo, 25 % al stop y 0 % a ninguno. "
-                          "Resultado medio +24 %.")
+    assert e.sentence == ("40 similar events: 75 % reached the target first, 25 % the stop and "
+                          "0 % neither. Average result +24 %.")
     big = Evidence("call45_40", n=1493, target=0.32, stop=0.66, neither=0.02, mean_return=-0.03)
-    assert big.sentence.startswith("1.493 eventos parecidos: 32 % llegó antes al objetivo, 66 % al stop")
-    assert big.sentence.endswith("Resultado medio −3 %.")
+    assert big.sentence.startswith("1,493 similar events: 32 % reached the target first, 66 % the stop")
+    assert big.sentence.endswith("Average result −3 %.")
 
 
 def test_evidence_without_a_matching_type_or_history():
     assert evidence({"event:13dg": True}, _history()).n == 0
     assert evidence({"event:insider_buy": True}, pd.DataFrame()).n == 0
-    assert Evidence("call45_40").sentence.startswith("Sin eventos")
+    assert Evidence("call45_40").sentence.startswith("No similar event")
     broad = evidence({"event:insider_buy": True}, _history(), min_n=30)
     assert broad.n == 100 and broad.similar_to == []
 
@@ -61,8 +61,8 @@ def test_matching_rules_needs_validated_confirmed_and_every_condition():
 
 
 def test_variant_label():
-    assert variant_label("call45_40") == "Call 45 días · +40 % / −25 %"
-    assert variant_label("stock12m_30") == "Acción 12 meses · +30 % / −20 %"
+    assert variant_label("call45_40") == "Call 45 days · +40 % / −25 %"
+    assert variant_label("stock12m_30") == "Stock 12 months · +30 % / −20 %"
 
 
 def _synthetic_scan(tmp_path, days=60):
@@ -87,14 +87,25 @@ def test_run_scan_finds_recent_events_only(tmp_path):
 
 
 def test_saved_scan_round_trip(tmp_path):
+    """The readable copy holds the events and the window. The bars live in the shared database
+    instead of a CSV per ticker per scan, which nothing read and which duplicated them."""
+    from miratrade import store
+    from miratrade.scan import store_scan
+
     res, _, _ = _synthetic_scan(tmp_path)
     save_scan(res, tmp_path / "scan")
     back = load_scan(tmp_path / "scan")
     assert list(back["events"]["ticker"]) == list(res["events"]["ticker"])
     assert back["since"] == res["since"] and back["end"] == res["end"]
-    t = res["events"]["ticker"].iat[0]
-    assert len(back["prices"][t]) == len(res["prices"][t])
+    assert back["prices"] == {}
+    assert not list((tmp_path / "scan").glob("prices_*.csv"))
     assert load_scan(tmp_path / "missing") is None
+
+    ticker = res["events"]["ticker"].iat[0]
+    db = store.connect(tmp_path / "market.db")
+    store_scan(res, db)
+    assert len(store.prices(db, [ticker])[ticker]) == len(res["prices"][ticker])
+    db.close()
 
 
 def test_scan_checks_the_price_source_before_downloading(monkeypatch):
@@ -104,9 +115,10 @@ def test_scan_checks_the_price_source_before_downloading(monkeypatch):
     from miratrade.scan import run_scan
 
     called = []
-    monkeypatch.setattr(prices, "source_ready", lambda source=None: (False, "Schwab: falta iniciar sesión."))
+    monkeypatch.setattr(prices, "source_ready",
+                        lambda source=None, translate=None: (False, "Schwab: not signed in."))
     monkeypatch.setattr("miratrade.scan._default_fetchers", lambda log: called.append(1) or {})
-    with pytest.raises(PriceSourceError, match="Configuración"):
+    with pytest.raises(PriceSourceError, match="Settings"):
         run_scan(days=7, log=lambda m: None)
     assert called == []                                    # nothing was downloaded
 
@@ -153,7 +165,8 @@ def test_scan_explains_that_it_downloads_before_the_window(monkeypatch):
     since = end - timedelta(days=7)
     assert asked["insiders"][0] == since - timedelta(days=look)      # the extra history is fetched
     said = " ".join(lines)
-    assert str(since) in said and str(since - timedelta(days=look)) in said and "sigue contando" in said
+    assert str(since) in said and str(since - timedelta(days=look)) in said
+    assert "keeps counting" in said                    # it says why it reaches further back
 
 
 def _events(rows):

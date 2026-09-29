@@ -27,6 +27,12 @@ def data_dir(env_var: str, default: str) -> Path:
 CACHE_DIR = data_dir("MIRATRADE_CACHE", ".cache")
 REPORTS_DIR = data_dir("MIRATRADE_REPORTS", "reports")
 
+# Everything downloaded and interpreted goes in one SQLite file, outside any checkout, so another
+# Mirandas Group app can open it read-only instead of re-downloading. See docs/DATA.md.
+DATA_HOME = Path(os.environ.get("MIRANDAS_DATA",
+                                Path(os.environ.get("APPDATA", Path.home())) / "MirandasGroup"))
+DB_PATH = Path(os.environ.get("MIRATRADE_DB", DATA_HOME / "market.db")).expanduser()
+
 # SEC requires a descriptive User-Agent with contact info on every request.
 SEC_USER_AGENT = os.environ.get("MIRATRADE_SEC_UA", "MiraTrade research contact@example.com")
 
@@ -47,6 +53,24 @@ class FlowParams:
     max_dte: int = 60                   # short-dated = more conviction / time-sensitive
     max_otm_pct: float = 0.15           # strikes more than 15% OTM are lottery tickets, skipped
     lookback_days: int = 5
+    # A contract with almost no open interest produces a spectacular volume/OI ratio on almost no
+    # money, so the ratio needs a floor under it. This is lower than the tradeability floor in
+    # LiquidityParams on purpose: noticing a signal and being able to trade it are different bars.
+    min_open_interest: int = 50
+
+
+@dataclass
+class LiquidityParams:
+    """Whether a suggested contract is one a person could actually trade.
+
+    These are not predictions, they are execution reality. The backtest priced every contract at a
+    modelled mid and charged no spread, so a rule that looked profitable there may not survive the
+    cost of getting in and out — which is exactly what ``max_target_eaten_pct`` bounds.
+    """
+    min_open_interest: int = 200         # below this there is nobody on the other side
+    max_spread_pct: float = 12.0         # the quoted gap as a share of the mid
+    max_target_eaten_pct: float = 30.0   # how much of the profile's target the round trip may cost
+    min_underlying_volume: float = 200_000   # a fallback when nothing is known about the chain
 
 
 @dataclass
@@ -158,6 +182,11 @@ class RiskParams:
     min_price: float = 5.0
     allow_market_orders: bool = False   # entries are limit orders: no surprise fills
     require_stop: bool = True           # every entry carries its exit orders (bracket)
+    # The capital position sizes are worked out from. It is a figure the user types, and the broker's
+    # real balance is used only when `size_on_balance` is switched on, because sizing a suggestion to
+    # somebody's actual account is advice about that person's money rather than analysis of a market.
+    sizing_capital: float = 25_000.0
+    size_on_balance: bool = False
 
 
 @dataclass
@@ -173,14 +202,30 @@ class BrokerParams:
 MIN_AUTO_REFRESH_MINUTES = 5
 
 CAP_TIERS: dict[str, tuple[float | None, float | None, str]] = {
-    "all": (None, None, "Todas"),
-    "mega": (200e9, None, "Mega · 200.000 M$ o más"),
-    "large": (10e9, 200e9, "Grandes · 10.000 a 200.000 M$"),
-    "mid": (2e9, 10e9, "Medianas · 2.000 a 10.000 M$"),
-    "small": (300e6, 2e9, "Pequeñas · 300 a 2.000 M$"),
-    "micro": (None, 300e6, "Micro · menos de 300 M$"),
-    "mid_plus": (2e9, None, "Medianas o mayores · 2.000 M$ o más"),
+    "all": (None, None, "All"),
+    "mega": (200e9, None, "Mega · $200B or more"),
+    "large": (10e9, 200e9, "Large · $10B to $200B"),
+    "mid": (2e9, 10e9, "Mid · $2B to $10B"),
+    "small": (300e6, 2e9, "Small · $300M to $2B"),
+    "micro": (None, 300e6, "Micro · under $300M"),
+    "mid_plus": (2e9, None, "Mid and above · $2B or more"),
 }
+
+
+@dataclass
+class NotifyParams:
+    """Where a new event is announced, and how much of it.
+
+    Both channels are off until they are configured, because a notification is something the app
+    sends out into the world on the user's behalf rather than something it draws on its own screen.
+    """
+    ntfy_topic: str = ""                # a short push; empty means no push
+    email_to: str = ""                  # the detail; empty means no mail
+    email_from: str = ""
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    only_tradeable: bool = True         # leave out what the quotes make unusable
+    max_events: int = 25                # a mail nobody reads is worse than no mail
 
 
 @dataclass
@@ -215,6 +260,8 @@ class DataParams:
 class Config:
     insider: InsiderParams = field(default_factory=InsiderParams)
     flow: FlowParams = field(default_factory=FlowParams)
+    liquidity: LiquidityParams = field(default_factory=LiquidityParams)
+    notify: NotifyParams = field(default_factory=NotifyParams)
     smart: SmartMoneyParams = field(default_factory=SmartMoneyParams)
     trade: TradeParams = field(default_factory=TradeParams)
     options: OptionParams = field(default_factory=OptionParams)

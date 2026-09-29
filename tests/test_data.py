@@ -43,9 +43,11 @@ def test_parse_form4_xml():
 def test_parse_daily_index_dedupes_and_filters():
     idx = ("Form Type   Company Name   CIK   Date Filed  File Name\n" + "-" * 40 + "\n"
            "4           ACME CORP      1     20260805    edgar/data/1/0001-26-1.txt\n"
-           "4           DOE JANE       99    20260805    edgar/data/1/0001-26-1.txt\n"
+           "4           DOE JANE       99    20260805    edgar/data/99/0001-26-1.txt\n"
            "4/A         ACME CORP      1     20260805    edgar/data/1/0001-26-2.txt\n"
            "10-K        ACME CORP      1     20260805    edgar/data/1/0001-26-3.txt\n")
+    # the company and the insider each get an index line for the SAME filing, under their own CIK:
+    # two paths, one accession, one document to download
     assert parse_daily_index(idx) == [("edgar/data/1/0001-26-1.txt", "20260805")]
 
 
@@ -285,18 +287,26 @@ def test_a_finished_day_is_parsed_once_and_reused(tmp_path, monkeypatch):
                 return FORM4.encode()
             return None
 
+    from miratrade import store
+
+    db = store.connect(tmp_path / "market.db")
     client = Client()
-    first = sec.fetch_insiders(day, day, client, today=date(2026, 9, 20))
-    assert len(first) == 1 and parsed == 1 and (tmp_path / "parsed" / "form4_20260911.pkl").exists()
+    first = sec.fetch_insiders(day, day, client, today=date(2026, 9, 20), db=db)
+    assert len(first) == 1 and parsed == 1
+    assert store.covered(db, sec.SOURCE) == {"2026-09-11"}   # the day is remembered as done
 
     calls_after_first = Client.calls
-    second = sec.fetch_insiders(day, day, client, today=date(2026, 9, 20))
+    second = sec.fetch_insiders(day, day, client, today=date(2026, 9, 20), db=db)
     assert parsed == 1                                      # nothing re-parsed
-    assert Client.calls == calls_after_first                # and nothing re-read
+    assert Client.calls == calls_after_first                # and nothing re-downloaded
     assert second["ticker"].tolist() == first["ticker"].tolist()
     assert second["filing_date"].tolist() == first["filing_date"].tolist()
     assert second["is_officer"].tolist() == first["is_officer"].tolist()
     assert second["value"].tolist() == first["value"].tolist()
+
+    # everything parsed is kept, not only the codes that were asked for
+    assert len(store.read(db, "insiders")) >= len(first)
+    db.close()
 
 
 def test_today_is_never_cached_because_more_filings_may_arrive(tmp_path):
@@ -316,5 +326,33 @@ def test_today_is_never_cached_because_more_filings_may_arrive(tmp_path):
                 return index.encode()
             return FORM4.encode() if "Archives" in url else None
 
-    sec.fetch_insiders(day, day, Client(), today=day)
-    assert not (tmp_path / "parsed" / "form4_20260911.pkl").exists()
+    from miratrade import store
+
+    db = store.connect(tmp_path / "market.db")
+    sec.fetch_insiders(day, day, Client(), today=day, db=db)
+    assert store.covered(db, sec.SOURCE) == set()            # today is never marked covered
+    assert len(store.read(db, "insiders")) == 1              # but what it found is still stored
+    db.close()
+
+
+def test_a_filing_that_lists_two_share_classes_is_not_thrown_away():
+    """Berkshire's first Form 4 for Lennar was filed with ticker "LEN, LEN.B". Rejecting that as
+    malformed dropped $212M of open-market buying — 61% of what they bought — in silence."""
+    import pandas as pd
+
+    from miratrade.data.sec import primary_ticker
+
+    got = primary_ticker(pd.Series(["LEN, LEN.B", "LEN", "len.b", "BRK.A", "GOOG/GOOGL",
+                                    " PFE ", None, "", "LEN;LEN.B"]))
+    assert list(got) == ["LEN", "LEN", "LEN.B", "BRK.A", "GOOG", "PFE", "", "", "LEN"]
+
+
+def test_the_ticker_filter_still_rejects_what_is_not_a_stock():
+    import pandas as pd
+
+    from miratrade.data.sec import primary_ticker
+
+    kept = primary_ticker(pd.Series(["LEN, LEN.B", "TOOLONGSYM", "123", "N/A"]))
+    ok = kept.str.fullmatch(r"[A-Z.]{1,6}", na=False)
+    assert list(kept[ok]) == ["LEN", "N"]          # the long symbol and the digits still go
+    assert not ok.iloc[1] and not ok.iloc[2]

@@ -22,7 +22,9 @@ import pandas as pd
 from miratrade.config import CACHE_DIR
 
 OHLCV = ["open", "high", "low", "close", "volume"]
-SOURCES = {"schwab": "Schwab (tu cuenta)", "research": "Webs públicas: Yahoo / Stooq (solo investigación personal)"}
+# Shown in the Settings screen, which translates them.
+SOURCES = {"schwab": "Schwab (your account)",
+           "research": "Public websites: Yahoo / Stooq (personal research only)"}
 SCHWAB_PACE_S = 0.6                     # ~100 requests/minute, under Schwab's 120/min for market data
 
 
@@ -62,30 +64,38 @@ def research_fetch(ticker: str, start: date, end: date) -> pd.DataFrame | None:
     return df if df is not None else _from_stooq(ticker, start, end)
 
 
-FIX_HINT = ("Conéctala en Configuración (o con `miratrade schwab setup` y `miratrade schwab login`). Solo para "
-            "tu investigación personal puedes elegir la fuente «Webs públicas» en Configuración.")
+FIX_HINT = ("Connect it under Settings (or with `miratrade schwab setup` and `miratrade schwab "
+            "login`). For your personal research only, you can choose the «Public websites» source "
+            "under Settings.")
 
 
-def source_ready(source: str | None = None) -> tuple[bool, str]:
+def source_ready(source: str | None = None, translate=None) -> tuple[bool, str]:
     """Whether the chosen price source could download right now, **without downloading anything**,
-    so a long run can stop before it starts instead of after."""
+    so a long run can stop before it starts instead of after. ``translate`` is the interface's
+    ``t()`` when the answer is shown on screen."""
+    from miratrade.messages import sayer
+
+    say = sayer(translate)
     source = _source(source)
     if source == "research":
-        return True, "Precios de webs públicas (Yahoo / Stooq): solo para tu investigación personal."
+        return True, say("Prices from public websites (Yahoo / Stooq): for your personal research "
+                         "only.")
     try:
         from miratrade.brokers.schwab import SchwabAuth, hours_until_relogin
 
         auth = SchwabAuth()
         if not auth.configured():
-            return False, "Los precios vienen de tu cuenta de Schwab y faltan las credenciales de tu app."
+            return False, say("Prices come from your Schwab account and your app credentials are "
+                              "missing.")
         hours = hours_until_relogin(auth)
         if hours is None:
-            return False, "Los precios vienen de tu cuenta de Schwab y falta iniciar sesión."
+            return False, say("Prices come from your Schwab account and you have not signed in yet.")
         if hours <= 0:
-            return False, "Los precios vienen de tu cuenta de Schwab y la sesión caducó."
-        return True, f"Precios de tu cuenta de Schwab (sesión válida {hours / 24:.1f} días más)."
+            return False, say("Prices come from your Schwab account and the session expired.")
+        return True, say("Prices from your Schwab account (session good for {days} more days).",
+                         days=f"{hours / 24:.1f}")
     except Exception as e:                       # keyring unavailable, schwab-py missing…
-        return False, f"No se pudo comprobar la sesión de Schwab: {e}."
+        return False, say("Could not check the Schwab session: {error}.", error=e)
 
 
 def schwab_fetcher(broker=None) -> Callable[[str, date, date], pd.DataFrame | None]:
@@ -118,37 +128,82 @@ def _source(source: str | None) -> str:
     return source
 
 
+PRICE_SOURCE = "prices"          # coverage rows: the window each ticker has been ASKED for
+
+
+def asked_span(db, tickers) -> dict[str, tuple[date, date]]:
+    """The window each ticker has already been asked for, which is not the same as what came back.
+
+    A company listed last month has no bars before it listed, and one that was delisted has none
+    after. Judging by the stored bars alone, those tickers look short of the window for ever and are
+    re-downloaded on every run — so what was *requested* is recorded, two rows per ticker.
+    """
+    names = sorted({str(t).upper() for t in tickers})
+    if not names:
+        return {}
+    spans = {}
+    for chunk in (names[i:i + 400] for i in range(0, len(names), 400)):
+        marks = ",".join("?" * len(chunk))
+        rows = db.execute(f"SELECT scope, min(day) a, max(day) b FROM coverage "
+                          f"WHERE source = ? AND scope IN ({marks}) GROUP BY scope",
+                          [PRICE_SOURCE, *chunk])
+        for row in rows:
+            if row["a"]:
+                spans[row["scope"]] = (date.fromisoformat(row["a"]), date.fromisoformat(row["b"]))
+    return spans
+
+
 def load_prices(tickers: list[str], start: date, end: date, cache_dir: Path = CACHE_DIR / "prices",
-                source: str | None = None, fetch: Callable | None = None) -> dict[str, pd.DataFrame]:
-    """Return ``{ticker: OHLCV frame}``; tickers with no data are left out. ``fetch`` overrides
-    the download (tests)."""
+                source: str | None = None, fetch: Callable | None = None,
+                db=None) -> dict[str, pd.DataFrame]:
+    """``{ticker: OHLCV frame}`` for the window, downloading only the days not stored yet.
+
+    What is already in the market database is used, and a download asks only for the span missing at
+    either edge — which in normal use is the handful of days since the last run. The old cache kept a
+    CSV per ticker **per requested range**, so a window one day wider re-downloaded years of history:
+    908 tickers had produced 1,486 files of overlapping data.
+
+    A ticker with a hole in the middle of its stored history is refetched whole; that is rare, and
+    cheaper to accept than to track every missing day separately.
+
+    ``fetch`` overrides the download (tests) and ``db`` the database (tests, and callers that already
+    have one open).
+    """
+    from miratrade import store
+
     source = _source(source)
-    # the research cache keeps its historical location; the licensed one gets its own folder
-    folder = Path(cache_dir) / "schwab" if source == "schwab" else Path(cache_dir)
-    folder.mkdir(parents=True, exist_ok=True)
-    out, missing = {}, []
-    for t in sorted(set(tickers)):
-        path = folder / f"{t}_{start:%Y%m%d}_{end:%Y%m%d}.csv"
-        if path.exists():
-            out[t] = pd.read_csv(path, index_col="date", parse_dates=True)
-        else:
-            missing.append((t, path))
-    if not missing:
-        return out
-    if fetch is None:
-        fetch = schwab_fetcher() if source == "schwab" else research_fetch
-    for t, path in missing:
-        try:
-            df = fetch(t, start, end)
-        except PriceSourceError:
-            raise
-        except Exception:  # one ticker failing (unknown symbol, network) must not kill the run
-            df = None
-        if df is None or df.empty:
-            continue
-        df.to_csv(path)
-        out[t] = df
-    return out
+    names = sorted({str(t).upper() for t in tickers})
+    owned, db = db is None, db if db is not None else store.connect()
+    try:
+        spans = asked_span(db, names)
+        wanted = []
+        for t in names:
+            span = spans.get(t)
+            if span is None:
+                wanted.append((t, start, end))
+            elif start < span[0] or end > span[1]:
+                # one call covering both edges, not the whole window again for every extra day
+                wanted.append((t, min(start, span[0]), max(end, span[1])))
+        if wanted:
+            if fetch is None:
+                fetch = schwab_fetcher() if source == "schwab" else research_fetch
+            for t, first, last in wanted:
+                try:
+                    df = fetch(t, first, last)
+                except PriceSourceError:
+                    raise
+                except Exception:      # one ticker failing must not kill the run
+                    df = None
+                if df is not None and not df.empty:
+                    store.write(db, "prices", df.assign(ticker=t, source=source))
+                # the window is recorded either way: a ticker with nothing to give must not be
+                # asked again every run
+                store.mark_covered(db, PRICE_SOURCE, [first, last],
+                                   rows=0 if df is None else len(df), scope=t)
+        return store.prices(db, names, start, end)
+    finally:
+        if owned:
+            db.close()
 
 
 def load_prices_csv(directory: Path) -> dict[str, pd.DataFrame]:

@@ -114,7 +114,8 @@ def classify_by_index(issuers: pd.DataFrame, fund_ciks: set[str]) -> pd.DataFram
         k = kind_from_name(r.issuer)
         if k == "company" and str(r.issuer_cik or "").lstrip("0") in fund_ciks:
             k = "fund"
-        rows.append((r.ticker, k, "índice EDGAR" if str(r.issuer_cik or "").lstrip("0") in fund_ciks else "nombre"))
+        rows.append((r.ticker, k,
+                     "EDGAR index" if str(r.issuer_cik or "").lstrip("0") in fund_ciks else "name"))
     return pd.DataFrame(rows, columns=["ticker", "kind", "source"])
 
 

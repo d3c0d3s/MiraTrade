@@ -8,7 +8,8 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from miratrade.app import theme
-from miratrade.app.widgets import es_date, es_num
+from miratrade.app.i18n import t
+from miratrade.app.widgets import fmt_date, fmt_num
 
 AXIS_W = 64          # right-hand price axis
 PAD = 14
@@ -22,10 +23,10 @@ class CandleChart(QWidget):
         self.event_date: pd.Timestamp | None = None
         self.event_color = theme.INSIDER
         self.event_shape = "◆"
-        self.empty_text = "Elige un evento para ver su gráfico."
+        self.empty_text = t("Pick an event to see its chart.")
         self.setMinimumSize(320, 240)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.setAccessibleName("Gráfico de velas")
+        self.setAccessibleName(t("Candlestick chart"))
 
     def set_data(self, df: pd.DataFrame | None, event_date=None, color: str = theme.INSIDER, shape: str = "◆") -> None:
         df = pd.DataFrame() if df is None else df
@@ -69,7 +70,7 @@ class CandleChart(QWidget):
             p.setPen(QPen(QColor(theme.GRID), 1))
             p.drawLine(QPointF(plot.left(), yy), QPointF(plot.right(), yy))
             p.setPen(QColor(theme.TEXT_2))
-            p.drawText(QRectF(plot.right() + 8, yy - 8, AXIS_W - 10, 16), Qt.AlignLeft | Qt.AlignVCenter, es_num(v))
+            p.drawText(QRectF(plot.right() + 8, yy - 8, AXIS_W - 10, 16), Qt.AlignLeft | Qt.AlignVCenter, fmt_num(v))
 
         n = len(self.df)
         step = plot.width() / n
@@ -88,8 +89,8 @@ class CandleChart(QWidget):
 
         # date labels: first and last bar
         p.setPen(QColor(theme.TEXT_2))
-        p.drawText(QRectF(plot.left(), r.bottom() - PAD - 2, 120, 14), Qt.AlignLeft, es_date(self.df.index[0]))
-        p.drawText(QRectF(plot.right() - 120, r.bottom() - PAD - 2, 120, 14), Qt.AlignRight, es_date(self.df.index[-1]))
+        p.drawText(QRectF(plot.left(), r.bottom() - PAD - 2, 120, 14), Qt.AlignLeft, fmt_date(self.df.index[0]))
+        p.drawText(QRectF(plot.right() - 120, r.bottom() - PAD - 2, 120, 14), Qt.AlignRight, fmt_date(self.df.index[-1]))
 
         if event_x is not None:
             col = QColor(self.event_color)
@@ -102,7 +103,7 @@ class CandleChart(QWidget):
             self._shape(p, QPointF(plot.left() + 5, PAD + 6), QColor(self.event_color), 4.0)
             p.setPen(QColor(theme.TEXT_BODY))
             p.drawText(QRectF(plot.left() + 16, PAD - 2, plot.width(), 16), Qt.AlignLeft,
-                       f"evento del {es_date(self.event_date)}")
+                       f"evento del {fmt_date(self.event_date)}")
 
     def _shape(self, p: QPainter, c: QPointF, color: QColor, s: float = 6.5) -> None:
         p.setPen(Qt.NoPen)

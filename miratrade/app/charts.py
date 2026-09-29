@@ -14,7 +14,9 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from miratrade.app import theme
-from miratrade.app.widgets import es_date, es_num
+from miratrade.app.i18n import t
+from miratrade.scan import EVENT_LABELS
+from miratrade.app.widgets import fmt_date, fmt_num
 
 PAD = 16
 AXIS_W = 62
@@ -27,7 +29,7 @@ class Chart(QWidget):
     def __init__(self, title: str = "", parent=None):
         super().__init__(parent)
         self.title = title
-        self.empty_text = "Sin datos para este reporte."
+        self.empty_text = t("No data in this report.")
         self.note = ""
         self.setMinimumHeight(230)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -66,7 +68,7 @@ class Chart(QWidget):
         f.setPixelSize(size)
         p.setFont(f)
 
-    def _y_axis(self, p: QPainter, plot: QRectF, low: float, high: float, fmt=lambda v: es_num(v, 1)) -> None:
+    def _y_axis(self, p: QPainter, plot: QRectF, low: float, high: float, fmt=lambda v: fmt_num(v, 1)) -> None:
         self._mono(p)
         for k in range(5):
             value = low + (high - low) * k / 4
@@ -86,7 +88,7 @@ class EquityCurve(Chart):
     """Cumulative result of taking every event with the same stake, in date order."""
 
     def __init__(self, parent=None):
-        super().__init__("Resultado acumulado, evento a evento", parent)
+        super().__init__(t("Cumulative result, event by event"), parent)
         self.dates: list = []
         self.values: np.ndarray = np.array([])
         self.split: pd.Timestamp | None = None
@@ -97,8 +99,8 @@ class EquityCurve(Chart):
         self.dates = list(pd.to_datetime(pd.Series(dates)[ok]))
         self.values = np.cumsum(returns[ok]) * 100
         self.split = pd.Timestamp(split) if split is not None else None
-        self.note = ("Suma de los resultados de cada evento, en el orden en que ocurrieron. "
-                     "La línea vertical separa el periodo de descubrimiento del de confirmación.")
+        self.note = t("Sum of each event's result, in the order they happened. The vertical line "
+                      "separates the discovery period from the confirmation one.")
         self.update()
 
     def paintEvent(self, _):
@@ -111,7 +113,7 @@ class EquityCurve(Chart):
         low, high = float(self.values.min()), float(self.values.max())
         pad = (high - low) * 0.08 or 1.0
         low, high = min(low - pad, 0.0), high + pad
-        self._y_axis(p, plot, low, high, lambda v: f"{es_num(v, 0)} %")
+        self._y_axis(p, plot, low, high, lambda v: f"{fmt_num(v, 0)} %")
 
         n = len(self.values)
         x = lambda i: plot.left() + i / (n - 1) * plot.width()            # noqa: E731
@@ -129,22 +131,22 @@ class EquityCurve(Chart):
                 p.drawLine(QPointF(sx, plot.top()), QPointF(sx, plot.bottom()))
                 self._mono(p, 10)
                 p.setPen(QColor(theme.TEXT_2))
-                p.drawText(QRectF(sx + 6, plot.top() + 2, 120, 14), Qt.AlignLeft, "confirmación →")
+                p.drawText(QRectF(sx + 6, plot.top() + 2, 120, 14), Qt.AlignLeft, t("confirmation →"))
 
         line = QPolygonF([QPointF(x(i), y(v)) for i, v in enumerate(self.values)])
         p.setPen(QPen(QColor(theme.UP if self.values[-1] >= 0 else theme.DOWN), 2))
         p.drawPolyline(line)
         self._mono(p, 10)
         p.setPen(QColor(theme.TEXT_2))
-        p.drawText(QRectF(plot.left(), plot.bottom() + 6, 150, 14), Qt.AlignLeft, es_date(self.dates[0]))
-        p.drawText(QRectF(plot.right() - 150, plot.bottom() + 6, 150, 14), Qt.AlignRight, es_date(self.dates[-1]))
+        p.drawText(QRectF(plot.left(), plot.bottom() + 6, 150, 14), Qt.AlignLeft, fmt_date(self.dates[0]))
+        p.drawText(QRectF(plot.right() - 150, plot.bottom() + 6, 150, 14), Qt.AlignRight, fmt_date(self.dates[-1]))
 
 
 class Histogram(Chart):
     """How the individual results were distributed, with the target and the stop marked."""
 
     def __init__(self, parent=None):
-        super().__init__("Distribución de los resultados", parent)
+        super().__init__(t("How the results were distributed"), parent)
         self.counts: np.ndarray = np.array([])
         self.edges: np.ndarray = np.array([])
         self.markers: list[tuple[float, str, str]] = []
@@ -159,7 +161,7 @@ class Histogram(Chart):
         else:
             self.counts, self.edges = np.array([]), np.array([])
         self.markers = list(markers)
-        self.note = "Cada barra cuenta eventos. Los extremos incluyen los resultados más raros."
+        self.note = t("Each bar counts events. The ends include the rarest results.")
         self.update()
 
     def paintEvent(self, _):
@@ -169,7 +171,7 @@ class Histogram(Chart):
         if not len(self.counts) or self.counts.max() == 0:
             return self._no_data(p, r)
         plot = self._plot_rect(r)
-        self._y_axis(p, plot, 0, float(self.counts.max()), lambda v: es_num(v, 0))
+        self._y_axis(p, plot, 0, float(self.counts.max()), lambda v: fmt_num(v, 0))
         lo, hi = float(self.edges[0]), float(self.edges[-1])
         x = lambda v: plot.left() + (v - lo) / (hi - lo or 1) * plot.width()   # noqa: E731
         width = plot.width() / len(self.counts)
@@ -188,8 +190,8 @@ class Histogram(Chart):
                 p.drawText(QRectF(mx + 4, plot.top() + 2, 90, 14), Qt.AlignLeft, label)
         self._mono(p, 10)
         p.setPen(QColor(theme.TEXT_2))
-        p.drawText(QRectF(plot.left(), plot.bottom() + 6, 120, 14), Qt.AlignLeft, f"{es_num(lo, 0)} %")
-        p.drawText(QRectF(plot.right() - 120, plot.bottom() + 6, 120, 14), Qt.AlignRight, f"{es_num(hi, 0)} %")
+        p.drawText(QRectF(plot.left(), plot.bottom() + 6, 120, 14), Qt.AlignLeft, f"{fmt_num(lo, 0)} %")
+        p.drawText(QRectF(plot.right() - 120, plot.bottom() + 6, 120, 14), Qt.AlignRight, f"{fmt_num(hi, 0)} %")
 
 
 class BarChart(Chart):
@@ -220,7 +222,7 @@ class BarChart(Chart):
         low, high = min(0.0, min(self.values)), max(0.0, max(self.values))
         pad = (high - low) * 0.15 or 1.0
         low, high = low - pad, high + pad
-        self._y_axis(p, plot, low, high, lambda v: f"{es_num(v, 0)}{self.suffix}")
+        self._y_axis(p, plot, low, high, lambda v: f"{fmt_num(v, 0)}{self.suffix}")
         y = lambda v: plot.bottom() - (v - low) / (high - low) * plot.height()   # noqa: E731
         zero = y(0.0)
         p.setPen(QPen(QColor(theme.BORDER_2), 1))
@@ -235,7 +237,7 @@ class BarChart(Chart):
             p.setPen(QColor(theme.TEXT))
             above = value >= 0
             p.drawText(QRectF(cx - step / 2, (top - 16) if above else (bottom + 2), step, 14),
-                       Qt.AlignHCenter, f"{es_num(value, 1)}{self.suffix}")
+                       Qt.AlignHCenter, f"{fmt_num(value, 1)}{self.suffix}")
             f = QFont(theme.FONT.split(",")[0].strip("' "))
             f.setPixelSize(11)
             p.setFont(f)
@@ -258,12 +260,12 @@ def event_type_bars(events: pd.DataFrame, variant: str) -> tuple[list[str], list
     if events is None or events.empty or column not in events:
         return [], [], []
     labels, values, counts = [], [], []
-    for key, label in (("event:insider_buy", "Directivos"), ("event:flow", "Opciones"), ("event:13dg", "13D / 13G")):
+    for key, label in EVENT_LABELS.items():
         if key not in events:
             continue
         rows = events[events[key].astype(bool)][column].dropna()
         if len(rows):
-            labels.append(label)
+            labels.append(t(label))
             values.append(float(rows.mean()) * 100)
             counts.append(len(rows))
     return labels, values, counts

@@ -222,27 +222,45 @@ def cmd_snapshot(a) -> None:
     from miratrade.data.options import snapshot_broker, snapshot_cboe
 
     source = a.source or load_user_config().data.quote_broker
+    from miratrade.flow import flow_universe
+
+    tickers = flow_universe(a.tickers, a.from_events, a.limit)
+    if not tickers:
+        raise SystemExit("No tickers to snapshot: name them, or run `miratrade scan` first so "
+                         "--from-events has something to work from.")
+    print(f"Option chains for {len(tickers)} tickers from {source}: {', '.join(tickers[:12])}"
+          + (" …" if len(tickers) > 12 else ""))
     if source == "cboe":
-        df = snapshot_cboe(a.tickers)                   # research only: refuses unless enabled
+        df = snapshot_cboe(tickers)                     # research only: refuses unless enabled
     elif source == "etrade":
         from miratrade.brokers.etrade import EtradeBroker
-        df = snapshot_broker(a.tickers, EtradeBroker())
+        df = snapshot_broker(tickers, EtradeBroker())
     else:
         from miratrade.brokers.schwab import SchwabBroker
-        df = snapshot_broker(a.tickers, SchwabBroker())
-    print(f"Saved {len(df)} option rows for {df['ticker'].nunique() if len(df) else 0} tickers ({source}).")
+        df = snapshot_broker(tickers, SchwabBroker())
+    print(f"Stored {len(df)} option rows for {df['ticker'].nunique() if len(df) else 0} tickers "
+          f"({source}). This only accumulates forward — run it once a day after the close.")
 
 
 def cmd_scan(a) -> None:
     from miratrade.config import APP_DIR, CACHE_DIR
     from miratrade.scan import (EVENT_LABELS, evidence, latest_history_report, load_history, run_scan,
-                                save_scan, variant_label)
+                                save_scan, store_scan, variant_label)
 
     report = Path(a.report) if a.report else latest_history_report(Path("reports"))
     history, rules = load_history(report) if report else (pd.DataFrame(), pd.DataFrame())
     res = run_scan(days=a.days, flow_dir=Path(a.flow) if a.flow else CACHE_DIR / "flow",
                    smart_money=not a.no_smart_money, cap_tier=a.cap)
     save_scan(res, Path(a.save) if a.save else APP_DIR / "scan")
+    written = store_scan(res)      # the shared database is what the screens filter on, and what
+    print(f"  stored: {written['events']} events, {written['prices']} price bars")   # another app reads
+    try:                           # a scan is what produces new events, so this is where they are
+        from miratrade.app import data as app_data          # announced; never twice for the same one
+        from miratrade.notify import notify_new
+
+        notify_new(cfg=app_data.read_settings(), reports_dir=Path("reports"), log=print)
+    except Exception as e:         # a notification must never be the reason a scan looks failed
+        print(f"  notify failed: {e}")
     print(f"\nEvidencia: {report or 'sin reporte con events.csv'} · perfil {variant_label(a.variant)}\n")
     for ev in res["events"].to_dict("records"):
         kinds = ", ".join(v for k, v in EVENT_LABELS.items() if ev.get(k))
@@ -282,8 +300,15 @@ def main(argv: list[str] | None = None) -> None:
     an.add_argument("--out", default="reports")
     an.set_defaults(func=cmd_analyze)
 
-    sn = sub.add_parser("snapshot", help="save today's option chains from your broker to .cache/flow")
-    sn.add_argument("tickers", nargs="+")
+    sn = sub.add_parser("snapshot", help="store today's option chains (volume and open interest per "
+                                         "contract) from your own broker account")
+    sn.add_argument("tickers", nargs="*", help="the tickers to snapshot; omit to use --from-events")
+    sn.add_argument("--from-events", type=int, default=30, metavar="DAYS",
+                    help="with no tickers named, use the ones with an event in the last DAYS "
+                         "(default 30)")
+    sn.add_argument("--limit", type=int, default=60,
+                    help="most tickers to ask for in one run; a chain is one broker request each "
+                         "(default 60)")
     sn.add_argument("--source", choices=["schwab", "etrade", "cboe"],
                     help="default: data.quote_broker in settings; cboe = personal research only")
     sn.set_defaults(func=cmd_snapshot)
@@ -314,6 +339,21 @@ def main(argv: list[str] | None = None) -> None:
     de = sub.add_parser("demo", help="run the full pipeline on synthetic data with a planted edge")
     de.add_argument("--out", default="reports/demo")
     de.set_defaults(func=cmd_demo)
+
+    from miratrade.store_cli import add_parser as add_store
+    add_store(sub)
+
+    from miratrade.congress_cli import add_parser as add_congress
+    add_congress(sub)
+
+    from miratrade.flow_cli import add_parser as add_flow
+    add_flow(sub)
+
+    from miratrade.earnings_cli import add_parser as add_earnings
+    add_earnings(sub)
+
+    from miratrade.notify_cli import add_parser as add_notify
+    add_notify(sub)
 
     from miratrade.massive_cli import add_parser as add_massive
     add_massive(sub)

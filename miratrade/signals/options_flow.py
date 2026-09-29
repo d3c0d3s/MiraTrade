@@ -20,7 +20,10 @@ def unusual_prints(flow: pd.DataFrame, p: FlowParams = FlowParams()) -> pd.DataF
     otm = np.where(f["type"] == "C", f["strike"] / f["underlying"] - 1, 1 - f["strike"] / f["underlying"])
     otm = pd.Series(otm, index=f.index).fillna(0)  # unknown spot: don't filter on moneyness
     mask = ((f["premium"] >= p.min_premium_usd) & (vol_oi >= p.min_vol_oi_ratio)
-            & dte.between(1, p.max_dte) & (otm <= p.max_otm_pct))
+            & dte.between(1, p.max_dte) & (otm <= p.max_otm_pct)
+            # a ratio computed against an open interest of 3 is arithmetic, not a signal; a brand new
+            # contract (open interest 0) is exempt, because it is opening by definition
+            & ((oi >= p.min_open_interest) | (oi <= 0)))
     f = f[mask].copy()
     # Buying calls / selling puts is bullish; unknown aggressor is treated as a buyer.
     buyer = f["side"] != "bid"

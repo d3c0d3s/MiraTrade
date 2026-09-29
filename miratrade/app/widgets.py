@@ -9,12 +9,18 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, QRunnable,
 from PySide6.QtWidgets import QFrame, QHeaderView, QLabel, QTableView, QVBoxLayout, QWidget
 
 from miratrade.app import theme
+from miratrade.app.i18n import formats, t
 
 
 class DataFrameModel(QAbstractTableModel):
-    def __init__(self, df: pd.DataFrame | None = None, headers: dict[str, str] | None = None):
+    def __init__(self, df: pd.DataFrame | None = None, headers: dict[str, str] | None = None,
+                 right: set[str] | None = None):
         super().__init__()
         self.headers = headers or {}
+        # Columns to align right although they hold text. A figure written in the user's own number
+        # format is a string by the time it gets here, and a column of right-aligned figures is what
+        # makes a table of them readable.
+        self.right = set(right or ())
         self.df = pd.DataFrame()
         self.set(df if df is not None else pd.DataFrame())
 
@@ -39,9 +45,11 @@ class DataFrameModel(QAbstractTableModel):
             if isinstance(v, (float, np.floating)):
                 return f"{v:,.2f}"
             if isinstance(v, (bool, np.bool_)):
-                return "sí" if v else "no"
+                return t("yes") if v else t("no")
             return str(v)
-        if role == Qt.TextAlignmentRole and isinstance(v, (int, float, np.number)) and not isinstance(v, bool):
+        if role == Qt.TextAlignmentRole and (str(self.df.columns[index.column()]) in self.right
+                                             or (isinstance(v, (int, float, np.number))
+                                                 and not isinstance(v, bool))):
             return int(Qt.AlignRight | Qt.AlignVCenter)
         if role == Qt.ForegroundRole and isinstance(v, (float, np.floating)) and self.df.columns[index.column()].endswith("_r"):
             from PySide6.QtGui import QColor
@@ -57,15 +65,42 @@ class DataFrameModel(QAbstractTableModel):
         return None
 
 
-def table(df: pd.DataFrame | None = None, headers: dict[str, str] | None = None) -> QTableView:
+def table(df: pd.DataFrame | None = None, headers: dict[str, str] | None = None,
+          right: set[str] | None = None, resizable: bool = False) -> QTableView:
+    """A read-only table over a DataFrame.
+
+    ``resizable`` gives the columns to the reader: each one starts at the width its contents need
+    and can then be dragged, double-clicked to fit, or reordered. A table of filings has one column
+    (the insider's name, the asset) that is far wider than the rest, and fixing every width to its
+    contents pushes the numbers off the screen — which is exactly the column the reader wants.
+    """
     view = QTableView()
-    view.setModel(DataFrameModel(df, headers))
+    view.setModel(DataFrameModel(df, headers, right))
     view.verticalHeader().hide()
-    view.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-    view.horizontalHeader().setStretchLastSection(True)
+    header = view.horizontalHeader()
+    if resizable:
+        header.setSectionResizeMode(QHeaderView.Interactive)
+        header.setSectionsMovable(True)
+        header.setStretchLastSection(False)
+        header.setMinimumSectionSize(48)
+        view.setWordWrap(False)
+        view.setTextElideMode(Qt.ElideRight)         # a long name is cut, never wrapped over rows
+        view.setHorizontalScrollMode(QTableView.ScrollPerPixel)
+    else:
+        header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        header.setStretchLastSection(True)
     view.setSelectionBehavior(QTableView.SelectRows)
     view.setAlternatingRowColors(False)
     return view
+
+
+def fit_columns(view: QTableView, cap: int = 320) -> None:
+    """Start every column at the width its contents need, bounded so one long column cannot push
+    the rest off the screen. Called after the data changes, never after the user has dragged."""
+    view.resizeColumnsToContents()
+    header = view.horizontalHeader()
+    for i in range(header.count()):
+        header.resizeSection(i, min(max(header.sectionSize(i) + 10, 56), cap))
 
 
 def card(*widgets, title: str | None = None) -> QFrame:
@@ -83,19 +118,23 @@ def card(*widgets, title: str | None = None) -> QFrame:
     return frame
 
 
-MONTHS = ("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic")
-
-
-def es_date(d, year: bool = True) -> str:
-    """24 ago 2026 (Spanish month abbreviations regardless of the system locale)."""
+def fmt_date(d, year: bool = True) -> str:
+    """24 Aug 2026, with the month written in the interface language whatever the system locale is."""
     d = pd.Timestamp(d)
-    return f"{d.day} {MONTHS[d.month - 1]}" + (f" {d.year}" if year else "")
+    return f"{d.day} {formats()['months'][d.month - 1]}" + (f" {d.year}" if year else "")
 
 
-def es_num(v: float, decimals: int = 2, sign: bool = False) -> str:
-    """1.234,56 with a real minus sign; ``sign`` also writes the plus."""
-    s = f"{abs(v):,.{decimals}f}".replace(",", " ").replace(".", ",").replace(" ", ".")
+def fmt_num(v: float, decimals: int = 2, sign: bool = False) -> str:
+    """1,234.56 in English and 1.234,56 in Spanish, always with a real minus sign; ``sign`` also
+    writes the plus."""
+    f = formats()
+    s = f"{abs(v):,.{decimals}f}".replace(",", "\0").replace(".", f["decimal"]).replace("\0", f["thousands"])
     return ("−" if v < 0 else "+" if sign and v > 0 else "") + s
+
+
+def fmt_money(v: float) -> str:
+    """A short amount for a crowded line: 1.4M$ or 250k$."""
+    return f"{fmt_num(v / 1e6, 1)} M$" if abs(v) >= 1e6 else f"{fmt_num(v / 1e3, 0)} k$"
 
 
 class ShapeIcon(QWidget):

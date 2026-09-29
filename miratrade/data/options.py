@@ -15,13 +15,14 @@ import json
 import re
 from datetime import date
 from pathlib import Path
+from typing import Callable
 
 import pandas as pd
 
 from miratrade.config import CACHE_DIR
 
 FLOW_COLUMNS = ["date", "ticker", "expiry", "type", "strike", "volume", "open_interest",
-                "premium", "underlying", "side"]
+                "premium", "underlying", "bid", "ask", "side"]
 
 ALIASES = {
     "date": ["date", "trade_date", "executed_at", "time", "datetime", "tradetime"],
@@ -33,6 +34,8 @@ ALIASES = {
     "open_interest": ["open_interest", "oi", "openinterest", "open_int"],
     "premium": ["premium", "total_premium", "prem", "value", "notional"],
     "underlying": ["underlying", "underlying_price", "stock_price", "spot", "underlyingprice"],
+    "bid": ["bid", "bid_price", "bidprice"],
+    "ask": ["ask", "ask_price", "askprice", "offer"],
     "side": ["side", "aggressor", "bid_ask", "sentiment_side", "trade_side"],
 }
 
@@ -66,7 +69,7 @@ def normalise_flow(df: pd.DataFrame) -> pd.DataFrame:
     out["expiry"] = pd.to_datetime(out["expiry"], errors="coerce")
     out["ticker"] = out["ticker"].astype(str).str.upper().str.strip()
     out["type"] = out["type"].astype(str).str.upper().str[0].where(out["type"].notna())
-    for col in ("strike", "volume", "open_interest", "premium", "underlying"):
+    for col in ("strike", "volume", "open_interest", "premium", "underlying", "bid", "ask"):
         out[col] = pd.to_numeric(
             out[col].astype(str).str.replace(r"[$,]", "", regex=True), errors="coerce")
     out["side"] = _norm_side(out["side"])
@@ -112,50 +115,96 @@ def chain_to_flow(chain: pd.DataFrame, asof: date, underlying: float | None = No
     return pd.DataFrame({
         "date": pd.Timestamp(asof), "ticker": c["underlying"], "expiry": pd.to_datetime(c["expiry"]),
         "type": c["type"], "strike": c["strike"], "volume": c["volume"], "open_interest": c["open_interest"],
-        "premium": c["volume"] * mid * 100, "underlying": underlying, "side": "",
+        "premium": c["volume"] * mid * 100, "underlying": underlying,
+        # the quotes are kept, not only the mid they imply: the spread is what decides whether the
+        # contract can be traded and how much of a target the round trip costs
+        "bid": c["bid"], "ask": c["ask"], "side": "",
     }, columns=FLOW_COLUMNS).reset_index(drop=True)
 
 
+def session_date(now=None) -> date:
+    """The trading session a snapshot taken *now* belongs to, in New York time.
+
+    A chain always shows the last session's figures, so labelling a snapshot with the calendar day it
+    was taken puts Friday's trading under a Sunday date — a row for a day the market never opened,
+    and Friday's volume counted twice if Friday evening was captured as well.
+
+    Before the opening bell the session is still the previous one, because nothing has traded yet.
+    """
+    import pandas as pd
+
+    from miratrade.scan import new_york_time
+
+    here = new_york_time(pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC"))
+    started = here.weekday() < 5 and (here.hour, here.minute) >= (9, 30)
+    return here.date() if started else pd.bdate_range(end=here.date() - pd.Timedelta(days=1),
+                                                      periods=1)[0].date()
+
+
 def snapshot_broker(tickers: list[str], broker, asof: date | None = None, days: int = 120,
-                    out_dir: Path = CACHE_DIR / "flow") -> pd.DataFrame:
-    """Today's option chains from the user's own broker account (Schwab or E*TRADE), saved as one
-    day of flow history. Run it once a day after the close to build your own history."""
+                    db=None, log: Callable[[str], None] = print) -> pd.DataFrame:
+    """Today's option chains from the user's own broker account, stored as one day of flow history.
+
+    This is the only free source that has volume **and** open interest together, which is what the
+    Vol > OI reading needs — the free historical feeds have volume alone. It only ever accumulates
+    forward, so every day it does not run is a day that cannot be recovered later: run it once a day
+    after the close.
+
+    A ticker whose chain cannot be fetched is reported and skipped, never allowed to lose the rest.
+    """
     from datetime import timedelta
 
-    asof = asof or date.today()
-    frames = []
-    spots = {}
+    from miratrade import store
+
+    asof = asof or session_date()
+    owned, db = db is None, db if db is not None else store.connect()
+    frames, failed = [], []
     try:
-        spots = {s: q.last for s, q in broker.quotes([t.upper() for t in tickers]).items()}
-    except Exception:
-        pass
-    for t in tickers:
-        t = t.upper()
+        spots = {}
         try:
-            chain = broker.option_chain(t, asof + timedelta(days=1), asof + timedelta(days=days))
-        except Exception as e:                      # one ticker failing must not lose the others
-            print(f"  {t}: sin cadena ({e})")
-            continue
-        frames.append(chain_to_flow(chain, asof, spots.get(t)))
-    df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=FLOW_COLUMNS)
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    df.to_csv(out_dir / f"{broker.name}_{asof:%Y%m%d}.csv", index=False)
-    return df
+            spots = {s: q.last for s, q in broker.quotes([t.upper() for t in tickers]).items()}
+        except Exception as e:      # without spots the moneyness filter simply does not apply
+            log(f"  no quotes ({e}); moneyness will be unknown")
+        for t in tickers:
+            t = t.upper()
+            try:
+                chain = broker.option_chain(t, asof + timedelta(days=1), asof + timedelta(days=days))
+            except Exception as e:                  # one ticker failing must not lose the others
+                failed.append(t)
+                log(f"  {t}: no chain ({e})")
+                continue
+            rows = chain_to_flow(chain, asof, spots.get(t))
+            if len(rows):
+                frames.append(rows.assign(source=broker.name))
+        df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=FLOW_COLUMNS)
+        written = store.write(db, "option_flow", df)
+        done = sorted({t.upper() for t in tickers} - set(failed))
+        for t in done:                              # coverage per ticker: a resumable backfill
+            store.mark_covered(db, f"flow_{broker.name}", [asof], rows=written, scope=t)
+        log(f"  {broker.name} {asof}: {written} contracts over {len(done)} tickers"
+            + (f", {len(failed)} without a chain" if failed else ""))
+        return df
+    finally:
+        if owned:
+            db.close()
 
 
-def snapshot_cboe(tickers: list[str], asof: date | None = None,
-                  out_dir: Path = CACHE_DIR / "flow") -> pd.DataFrame:
+def snapshot_cboe(tickers: list[str], asof: date | None = None, db=None) -> pd.DataFrame:
     """Fetch today's delayed chains from CBOE's public page. Personal research only: its terms do
-    not allow commercial use, so it needs the "research" data source switched on in settings."""
+    not allow commercial use, so it needs the "research" data source switched on in settings.
+
+    Stored under its own ``source``, so these rows can be told apart from a broker's — they are
+    delayed, and their licence is not the same.
+    """
     import requests
 
     from miratrade.config import load_user_config
     from miratrade.data.prices import PriceSourceError
 
     if load_user_config().data.price_source != "research":
-        raise PriceSourceError("La página de CBOE es solo para investigación personal. Usa "
-                               "`miratrade snapshot` con tu bróker, o elige la fuente «Webs públicas» en Configuración.")
+        raise PriceSourceError("The CBOE page is for personal research only. Use `miratrade snapshot` "
+                               "with your broker, or choose the «Public websites» source under "
+                               "Settings.")
     asof = asof or date.today()
     frames = []
     for t in tickers:
@@ -167,8 +216,13 @@ def snapshot_cboe(tickers: list[str], asof: date | None = None,
                 frames.append(parse_cboe_chain(json.loads(resp.text), asof))
         except Exception:
             continue
+    from miratrade import store
+
     df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=FLOW_COLUMNS)
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    df.to_csv(out_dir / f"cboe_{asof:%Y%m%d}.csv", index=False)
+    owned, db = db is None, db if db is not None else store.connect()
+    try:
+        store.write(db, "option_flow", df.assign(source="cboe") if len(df) else df)
+    finally:
+        if owned:
+            db.close()
     return df

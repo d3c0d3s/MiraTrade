@@ -29,20 +29,20 @@ def test_open_trade_refuses_what_should_not_be_opened():
     trades = []
     t = open_trade(trades, **_call(), note="3 directivos")
     assert t.status == OPEN and t.quantity == 2 and t.cost == 800.0 and t.risk == 200.0
-    assert t.label() == "ACME 50 C · vence 2026-11-20" and t.note == "3 directivos"
+    assert t.note == "3 directivos" and t.strike == 50.0 and t.expiry == "2026-11-20"
 
-    with pytest.raises(ValueError, match="ya tienes una posición abierta|Ya tienes una posición"):
+    with pytest.raises(ValueError, match="already hold an open position"):
         open_trade(trades, **_call())                        # same ticker twice
-    with pytest.raises(ValueError, match="stop"):
+    with pytest.raises(ValueError, match="stop must sit below"):
         open_trade(trades, **_call(ticker="B", stop=5.0))    # stop above the entry
-    with pytest.raises(ValueError, match="entrada no es válido"):
+    with pytest.raises(ValueError, match="entry price is not valid"):
         open_trade(trades, **_call(ticker="C", entry=0.0))
-    with pytest.raises(ValueError, match="ni una unidad"):
+    with pytest.raises(ValueError, match="not buy a single unit"):
         open_trade(trades, **_call(ticker="D", equity=10.0))
 
     cfg = Config()
     cfg.risk.max_positions = 1
-    with pytest.raises(ValueError, match="máximo"):
+    with pytest.raises(ValueError, match="maximum you set"):
         open_trade(trades, **_call(ticker="E"), cfg=cfg)
 
 
@@ -93,11 +93,11 @@ def test_summary_and_equity_curve_read_the_journal():
     c.last = 4.5
 
     s = summary(trades, 25_000.0)
-    assert s["abiertas"] == 1 and s["cerradas"] == 2 and s["acierto"] == 0.5
-    assert s["ganancia_realizada"] == pytest.approx((6.0 - 4.0) * 200 + (3.0 - 4.0) * 200)
-    assert s["ganancia_abierta"] == pytest.approx((4.5 - 4.0) * 200)
-    assert s["equity"] == pytest.approx(25_000 + s["ganancia_realizada"] + s["ganancia_abierta"])
-    assert s["riesgo_abierto"] == 200.0
+    assert s["open"] == 1 and s["closed"] == 2 and s["hit_rate"] == 0.5
+    assert s["realised"] == pytest.approx((6.0 - 4.0) * 200 + (3.0 - 4.0) * 200)
+    assert s["unrealised"] == pytest.approx((4.5 - 4.0) * 200)
+    assert s["equity"] == pytest.approx(25_000 + s["realised"] + s["unrealised"])
+    assert s["open_risk"] == 200.0
 
     dates, values = equity_curve(trades, 25_000.0)
     assert dates == ["2026-10-01", "2026-10-02"]
@@ -134,8 +134,10 @@ def test_practice_sizes_on_the_real_balance_when_it_can_read_it():
 
         def __init__(self, accounts):
             self._accounts = accounts
+            self.calls = 0
 
         def accounts(self):
+            self.calls += 1
             if self._accounts is None:
                 raise RuntimeError("login expired")
             return self._accounts
@@ -143,12 +145,26 @@ def test_practice_sizes_on_the_real_balance_when_it_can_read_it():
     def account(equity):
         return Account(number_masked="…1", account_hash="h", equity=equity, cash=0.0, buying_power=0.0)
 
-    assert account_equity(None) == (DEFAULT_EQUITY, "default")
-    assert account_equity(Broker([account(9_000.0), account(1_000.0)])) == (10_000.0, "etrade")
-    assert account_equity(Broker(None)) == (DEFAULT_EQUITY, "unreachable")
-    assert account_equity(Broker([])) == (DEFAULT_EQUITY, "unreadable")
-    assert account_equity(Broker([account(None)])) == (DEFAULT_EQUITY, "unreadable")
-    assert account_equity(Broker([account(0.0)])) == (DEFAULT_EQUITY, "unreadable")
+    # By default the capital is a figure the user typed and the broker is never asked, because
+    # sizing a suggestion to somebody's real account is advice about their money.
+    off = Config()
+    off.risk.sizing_capital = 30_000.0
+    assert account_equity(None, cfg=off) == (30_000.0, "typed")
+    asked = Broker([account(9_000.0)])
+    assert account_equity(asked, cfg=off) == (30_000.0, "typed")
+    assert asked.calls == 0                      # the account was not even read
+
+    # switched on, the real balance is used, and every way of failing falls back to the figure
+    on = Config()
+    on.risk.sizing_capital = 30_000.0
+    on.risk.size_on_balance = True
+    assert account_equity(Broker([account(9_000.0), account(1_000.0)]), cfg=on) == (10_000.0, "etrade")
+    assert account_equity(None, cfg=on) == (30_000.0, "no_broker")
+    assert account_equity(Broker(None), cfg=on) == (30_000.0, "unreachable")
+    assert account_equity(Broker([]), cfg=on) == (30_000.0, "unreadable")
+    assert account_equity(Broker([account(None)]), cfg=on) == (30_000.0, "unreadable")
+    assert account_equity(Broker([account(0.0)]), cfg=on) == (30_000.0, "unreadable")
+    assert account_equity(None) == (DEFAULT_EQUITY, "typed")      # the stated default
     assert equity_from_accounts([]) is None
 
     # and the size follows the money: risking 1 % with 100 $ at stake per contract

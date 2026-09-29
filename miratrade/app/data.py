@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from miratrade.app.i18n import t
 from miratrade.config import APP_DIR, REPORTS_DIR, Config, load_user_config
 
 SETTINGS_PATH = APP_DIR / "settings.json"
@@ -29,14 +30,15 @@ class ReportInfo:
 
     @property
     def label(self) -> str:
-        span = f"{self.start} → {self.end}" if self.start else "sin fechas"
+        span = f"{self.start} → {self.end}" if self.start else t("no dates")
         return f"{self.name}  ·  {span}"
 
     @property
     def summary(self) -> str:
         if self.validated == 0:
-            return f"{self.trades} operaciones · sin reglas validadas"
-        return f"{self.trades} operaciones · {self.validated} reglas validadas · {self.wf_confirmed} con walk-forward"
+            return t("{trades} trades · no validated rule", trades=self.trades)
+        return t("{trades} trades · {validated} validated rules · {confirmed} with walk-forward",
+                 trades=self.trades, validated=self.validated, confirmed=self.wf_confirmed)
 
 
 def _count_rows(path: Path) -> int:
@@ -64,6 +66,31 @@ def report_info(path: Path) -> ReportInfo | None:
     return ReportInfo(path, path.name, datetime.fromtimestamp(md.stat().st_mtime),
                       m.group(1) if m else None, m.group(2) if m else None,
                       _count_rows(path / "trades.csv"), validated, confirmed)
+
+
+def honesty_line(root: Path = REPORTS_DIR) -> str:
+    """What the latest analysis actually found, in one sentence, to be shown beside the suggestions.
+
+    It is read from the report rather than written into the code so it cannot go stale: today it says
+    nothing has been validated because nothing has, and the day a rule survives out of sample it will
+    say so by itself. A disclaimer that stops matching the evidence is worse than none, in both
+    directions — it either overstates what is known or hides it.
+    """
+    reports = list_reports(root)
+    if not reports:
+        return t("No analysis has been run yet, so nothing here has been tested against history.")
+    best = max(reports, key=lambda r: (r.wf_confirmed, r.validated))
+    if best.validated == 0:
+        return t("The latest analysis validated no rule out of sample: there is no measured edge "
+                 "here yet, only events and what similar ones did.")
+    # one rule is not "1 rules", and this line is read by someone deciding whether to risk money
+    rules = (t("1 rule") if best.validated == 1
+             else t("{count} rules", count=best.validated))
+    if best.wf_confirmed == 0:
+        return t("The latest analysis validated {rules} out of sample, none confirmed by "
+                 "walk-forward.", rules=rules)
+    return t("The latest analysis validated {rules} out of sample, {confirmed} confirmed by "
+             "walk-forward.", rules=rules, confirmed=best.wf_confirmed)
 
 
 def list_reports(root: Path = REPORTS_DIR) -> list[ReportInfo]:
@@ -105,8 +132,10 @@ def write_settings(cfg: Config, path: Path = SETTINGS_PATH) -> None:
     """Save the user-editable sections; re-read to make sure the file is valid."""
     from dataclasses import asdict
 
+    # The sections a person edits from the Settings screen. A section left out here is silently
+    # forgotten on the next save, however carefully the screen filled it in.
     data = {"risk": asdict(cfg.risk), "broker": asdict(cfg.broker), "data": asdict(cfg.data),
-            "ui": asdict(cfg.ui)}
+            "ui": asdict(cfg.ui), "notify": asdict(cfg.notify)}
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -153,17 +182,17 @@ def set_cap_tier(tier: str, path: Path = SETTINGS_PATH) -> None:
 
 
 def cap_combo(current: str, on_change) -> "object":
-    """A size selector shared by Señales and Reportes."""
+    """A size selector shared by the Signals and Reports screens."""
     from PySide6.QtWidgets import QComboBox
 
     from miratrade.config import CAP_TIERS
 
     box = QComboBox()
     for key, (_low, _high, label) in CAP_TIERS.items():
-        box.addItem(label, key)
+        box.addItem(t(label), key)
     box.setCurrentIndex(max(0, box.findData(current)))
-    box.setAccessibleName("Tamaño de empresa")
-    box.setToolTip("Reduce las empresas a descargar y simular. Ahorra tiempo; en el análisis de 5 años "
-                   "ningún tramo de tamaño mostró ventaja por sí solo.")
+    box.setAccessibleName(t("Company size"))
+    box.setToolTip(t("Narrows the companies to download and simulate. It saves time; over the "
+                     "5-year analysis no size band showed an edge on its own."))
     box.currentIndexChanged.connect(lambda _: on_change(box.currentData()))
     return box

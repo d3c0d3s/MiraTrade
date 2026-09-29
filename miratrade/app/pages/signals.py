@@ -1,4 +1,4 @@
-"""Señales: the new events of the last days, each with its chart and the evidence of similar
+"""Signals: the new events of the last days, each with its chart and the evidence of similar
 past events (from the newest report with ``events.csv``). The scan runs as a separate process."""
 from __future__ import annotations
 
@@ -14,25 +14,46 @@ from PySide6.QtWidgets import (QComboBox, QFrame, QGridLayout, QHBoxLayout, QLab
                                QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QVBoxLayout, QWidget)
 
 from miratrade.app import data, theme
+from miratrade.app.i18n import t
 from miratrade.app.chart import CandleChart
-from miratrade.app.widgets import ShapeIcon, es_date, es_num, muted
+from miratrade.app.widgets import ShapeIcon, fmt_date, fmt_money, fmt_num, muted
 from miratrade.config import MIN_AUTO_REFRESH_MINUTES, Config
 from miratrade.outcomes import EVENT_TYPES, variants
-from miratrade.scan import (CONDITION_LABELS, DEFAULT_VARIANT, EVENT_LABELS, contract_for, covered_days,
-                            evidence, filter_events, latest_history_report, load_history, load_scan,
-                            variant_label, within_window)
+from miratrade.scan import (CONDITION_LABELS, DEFAULT_VARIANT, EVENT_LABELS, contract_for,
+                            empty_events, evidence, latest_history_report, load_events, load_history,
+                            load_scan, stored_days, variant_label, within_window)
 
-CONTEXT_LABELS = {"trend:up": "Tendencia al alza (sobre sus medias de 20 y 50)",
-                  "trend:above_200": "Por encima de su media de 200 sesiones",
-                  "mom:ret20>0": "Sube en las últimas 20 sesiones", "rsi:<40": "RSI bajo (menos de 40)",
-                  "rsi:>60": "RSI alto (más de 60)", "vol:rel>1.5": "Volumen 1,5 veces el normal",
-                  "mkt:spy_above_50d": "Mercado (SPY) sobre su media de 50", "short:low": "Poca venta en corto",
-                  "short:high": "Mucha venta en corto",
-                  "dark:high": "Volumen fuera de bolsa inusualmente alto (dark pool)",
-                  "dark:low": "Volumen fuera de bolsa inusualmente bajo"}
-DISCLAIMER = "Análisis, no asesoramiento. Con opciones puedes perder la prima entera."
+CONTEXT_LABELS = {"trend:up": "Trending up (above its 20 and 50 averages)",
+                  "trend:above_200": "Above its 200-session average",
+                  "mom:ret20>0": "Up over the last 20 sessions", "rsi:<40": "Low RSI (under 40)",
+                  "rsi:>60": "High RSI (over 60)", "vol:rel>1.5": "Volume 1.5 times the usual",
+                  "mkt:spy_above_50d": "Market (SPY) above its 50 average",
+                  "short:low": "Little short selling", "short:high": "Heavy short selling",
+                  "dark:high": "Unusually high off-exchange volume (dark pool)",
+                  "dark:low": "Unusually low off-exchange volume"}
+# Said beside every suggestion. The second sentence is read from the latest report at display time
+# (see data.honesty_line), so the claim can never drift from what was actually measured.
+DISCLAIMER = ("Analysis, not advice. With options you can lose the whole premium, and the contract "
+              "prices shown are modelled from the stock, not quotes.")
 ITEM_PADDING = 10          # keep in sync with theme.QSS: QListWidget::item padding
 SELECTED_BORDER = 1        # …and the border it gains when selected
+
+
+def event_note(ev) -> str:
+    """What was filed, in the user's language. The scan saves the sentence twice: as English prose
+    for the console and as its pieces, so a scan downloaded months ago still reads in the language
+    chosen today. A scan from before that change only has the prose."""
+    import json
+
+    from miratrade.messages import note
+
+    parts = ev.get("what_parts")
+    if isinstance(parts, str) and parts.strip():
+        try:
+            return note([(template, fields) for template, fields in json.loads(parts)], t, fmt_money)
+        except (ValueError, TypeError):          # hand-edited or from an older format
+            pass
+    return str(ev.get("what", ""))
 
 
 def _label(text: str, name: str, wrap: bool = False) -> QLabel:
@@ -52,10 +73,10 @@ def _pill(kind: str) -> QFrame:
     lay.setContentsMargins(8, 0, 9, 0)
     lay.setSpacing(5)
     lay.addWidget(ShapeIcon(shape, color, 9))
-    lab = QLabel(EVENT_LABELS[kind])
+    lab = QLabel(t(EVENT_LABELS[kind]))
     lab.setStyleSheet(f"color: {color}; font-size: 12px; border: none;")
     lay.addWidget(lab)
-    pill.setAccessibleName(EVENT_LABELS[kind])
+    pill.setAccessibleName(t(EVENT_LABELS[kind]))
     return pill
 
 
@@ -74,8 +95,8 @@ class EventCard(QWidget):
             if ev.get(k):
                 top.addWidget(_pill(k))
         lay.addLayout(top)
-        lay.addWidget(_label(str(ev.get("what", "")), "body", wrap=True))
-        lay.addWidget(muted(es_date(ev["signal_date"])))
+        lay.addWidget(_label(event_note(ev), "body", wrap=True))
+        lay.addWidget(muted(fmt_date(ev["signal_date"])))
 
     def fit(self, width: int) -> int:
         """Lay the card out for ``width`` and return the height it really needs. Qt guesses the
@@ -95,8 +116,9 @@ class ContractCard(QFrame):
     """The contract the chosen profile would buy, with its cost and greeks. Every number is
     modelled from the stock's realised volatility, which the footer says plainly."""
 
-    FIELDS = (("Prima", "premium"), ("Delta", "delta"), ("Coste 1 contrato", "cost"), ("Theta · $/día", "theta"),
-              ("Strike", "strike"), ("Vega", "vega"), ("Vol. implícita", "iv"), ("Sobre el strike", "in_the_money"))
+    FIELDS = (("Premium", "premium"), ("Delta", "delta"), ("Cost of 1 contract", "cost"),
+              ("Theta · $/day", "theta"), ("Strike", "strike"), ("Vega", "vega"),
+              ("Implied volatility", "iv"), ("Above the strike", "in_the_money"))
 
     def __init__(self):
         super().__init__()
@@ -111,7 +133,7 @@ class ContractCard(QFrame):
         for i, (caption, key) in enumerate(self.FIELDS):
             box = QVBoxLayout()
             box.setSpacing(1)
-            name = QLabel(caption)
+            name = QLabel(t(caption))
             name.setObjectName("label")
             value = QLabel("–")
             value.setObjectName("price")
@@ -128,27 +150,49 @@ class ContractCard(QFrame):
         body.addWidget(self.sub)
         body.addLayout(grid)
         body.addWidget(self.exits)
-        body.addWidget(muted("Precios de modelo, no cotizaciones. Con tu cuenta conectada se usará la cadena real."))
+        self.earnings = _label("", "body", wrap=True)
+        self.earnings.setStyleSheet(f"color: {theme.DOWN}")
+        body.addWidget(self.earnings)
+        self.liquidity = _label("", "body", wrap=True)
+        body.addWidget(self.liquidity)
+        body.addWidget(muted(t("Modelled prices, not quotes. With your account connected the real chain "
+                               "is used.")))
 
-    def set_contract(self, ticker: str, c: dict | None, reason: str = "") -> None:
+    def set_contract(self, ticker: str, c: dict | None, reason: str = "", reports=None,
+                     tradeable=None) -> None:
+        """``reports`` is the earnings date this contract would sit through, if any; ``tradeable`` is
+        the liquidity verdict, whose reason is shown whether it passes or not — a contract the quotes
+        make unusable must not look the same as one they do not."""
+        self.earnings.setText("")
+        self.liquidity.setText("")
         if not c:
-            self.head.setText("Sin contrato")
-            self.sub.setText(reason or "Este perfil compra la acción, no una opción.")
+            self.head.setText(t("No contract"))
+            self.sub.setText(reason or t("This profile buys the shares, not an option."))
             self.exits.setText("")
             for label in self.values.values():
                 label.setText("–")
             return
-        self.head.setText(f"{ticker} {es_num(c['strike'])} C")
-        self.sub.setText(f"vence el {es_date(c['expiry'])} · {c['dte']} días · acción a {es_num(c['spot'])} $")
-        shown = {"premium": f"{es_num(c['premium'])} $", "delta": es_num(c["delta"]),
-                 "cost": f"{es_num(c['cost'], 0)} $", "theta": es_num(c["theta"], 3),
-                 "strike": es_num(c["strike"]), "vega": es_num(c["vega"], 3),
-                 "iv": f"{es_num(c['iv'] * 100, 0)} %",
-                 "in_the_money": f"{es_num(c['in_the_money'] * 100, 1, sign=True)} %"}
+        self.head.setText(f"{ticker} {fmt_num(c['strike'])} C")
+        self.sub.setText(t("expires {date} · {days} days · stock at {price} $",
+                           date=fmt_date(c["expiry"]), days=c["dte"], price=fmt_num(c["spot"])))
+        shown = {"premium": f"{fmt_num(c['premium'])} $", "delta": fmt_num(c["delta"]),
+                 "cost": f"{fmt_num(c['cost'], 0)} $", "theta": fmt_num(c["theta"], 3),
+                 "strike": fmt_num(c["strike"]), "vega": fmt_num(c["vega"], 3),
+                 "iv": f"{fmt_num(c['iv'] * 100, 0)} %",
+                 "in_the_money": f"{fmt_num(c['in_the_money'] * 100, 1, sign=True)} %"}
         for key, text in shown.items():
             self.values[key].setText(text)
-        self.exits.setText(f"Vender en {es_num(c['target'])} $ (+{c['target_pct'] * 100:.0f} %) · "
-                           f"stop en {es_num(c['stop'])} $ (−{c['stop_pct'] * 100:.0f} %)")
+        self.exits.setText(t("Sell at {target} $ (+{up} %) · stop at {stop} $ (−{down} %)",
+                             target=fmt_num(c["target"]), up=f"{c['target_pct'] * 100:.0f}",
+                             stop=fmt_num(c["stop"]), down=f"{c['stop_pct'] * 100:.0f}"))
+        if tradeable is not None:
+            self.liquidity.setText(tradeable.say(t, lambda v: fmt_num(v, 0)))
+            self.liquidity.setStyleSheet("" if tradeable.ok else f"color: {theme.DOWN}")
+        if reports is not None:
+            self.earnings.setText(t("Reports on {date}, before this contract expires: the premium "
+                                    "usually collapses once the news is out, even when the stock "
+                                    "moved the right way, and a gap can open past the stop.",
+                                  date=fmt_date(reports)))
 
 
 class OutcomeBar(QWidget):
@@ -183,7 +227,7 @@ class SignalsPage(QWidget):
     practice_added = Signal()
 
     def __init__(self, reports_dir: Path | None = None, scan_dir: Path | None = None, cfg: Config = Config(),
-                 settings_path: Path | None = None):
+                 settings_path: Path | None = None, db=None):
         super().__init__()
         self.setObjectName("page")
         self.cfg = cfg
@@ -191,6 +235,8 @@ class SignalsPage(QWidget):
         self.scan_dir = Path(scan_dir or data.SCAN_DIR)
         self.settings_path = Path(settings_path or data.SETTINGS_PATH)
         self.proc: QProcess | None = None
+        self._db = db                        # None: opened read-only on first use
+        self._owns_db = db is None
         self.scan: dict | None = None
         self._contract: dict | None = None
         self.auto = QTimer(self)                 # repeats the download on its own; see _tick
@@ -199,27 +245,34 @@ class SignalsPage(QWidget):
         self.report: Path | None = None
 
         # toolbar
-        self.title = _label("Señales nuevas", "h1")
+        self.title = _label(t("New signals"), "h1")
         self.meta = _label("", "muted")
+        # One control, one meaning: the window you are working in. Pressing «Update data» downloads
+        # it, and the list shows it. There used to be two day values — this one filtering the list
+        # and a hidden setting driving the download — so the header could say 30 while the control
+        # said 15, and nobody could tell which number meant what.
         self.days = QSpinBox()
-        self.days.setRange(1, 60)
-        self.days.setValue(7)
-        self.days.setSuffix(" días")
-        self.days.setAccessibleName("Mostrar los eventos de los últimos días")
-        self.days.setToolTip("Filtra lo ya descargado. No vuelve a buscar.")
-        self.days.valueChanged.connect(lambda _: self.apply_filters())
+        self.days.setRange(1, 365)
+        self.days.setValue(data.read_settings(self.settings_path).data.scan_days)
+        self.days.setSuffix(t(" days"))
+        self.days.setAccessibleName(t("The window: days to download and to show"))
+        self.days.setToolTip(t("How many days «Update data» downloads, and how many the list shows. "
+                               "Changing it alone only re-reads what is already stored."))
+        self.days.valueChanged.connect(self._days_changed)
         self.cap = data.cap_combo(data.read_settings(self.settings_path).data.cap_tier, self._cap_changed)
-        self.cap.setToolTip("Filtra lo ya descargado por tamaño de empresa. No vuelve a buscar.")
+        self.cap.setToolTip(t("Narrows what is on screen by company size. It never downloads."))
         self.variant = QComboBox()
         for v in variants(cfg):
-            self.variant.addItem(variant_label(v, cfg), v)
+            self.variant.addItem(variant_label(v, cfg, t), v)
         self.variant.setCurrentIndex(max(0, self.variant.findData(DEFAULT_VARIANT)))
-        self.variant.setAccessibleName("Perfil de resultado para la evidencia")
+        self.variant.setAccessibleName(t("Outcome profile for the evidence"))
+        self.variant.setToolTip(t("Which profile the evidence and the contract are shown for. It "
+                                  "never downloads."))
         self.variant.currentIndexChanged.connect(lambda _: self._show_selected(self.list.currentItem()))
-        self.scan_btn = QPushButton("Actualizar datos")
+        self.scan_btn = QPushButton(t("Update data"))
         self.scan_btn.setObjectName("primary")
         self.scan_btn.clicked.connect(self.start_scan)
-        self.cancel_btn = QPushButton("Cancelar")
+        self.cancel_btn = QPushButton(t("Cancel"))
         self.cancel_btn.clicked.connect(self.cancel_scan)
         self.cancel_btn.hide()
         bar = QHBoxLayout()
@@ -230,7 +283,7 @@ class SignalsPage(QWidget):
         titles.addWidget(self.meta)
         bar.addLayout(titles)
         bar.addStretch(1)
-        for w in (muted("Perfil"), self.variant, muted("Tamaño"), self.cap, self.days,
+        for w in (muted(t("Profile")), self.variant, muted(t("Size")), self.cap, self.days,
                   self.scan_btn, self.cancel_btn):
             bar.addWidget(w)
         self.log = QPlainTextEdit()
@@ -242,11 +295,11 @@ class SignalsPage(QWidget):
         self.coverage = muted("")
         self.coverage.hide()
         self.source_msg = _label("", "body", wrap=True)
-        self.source_btn = QPushButton("Abrir Configuración")
+        self.source_btn = QPushButton(t("Open Settings"))
         self.source_btn.clicked.connect(self.open_settings.emit)
-        self.research_btn = QPushButton("Usar webs públicas")
-        self.research_btn.setToolTip("Yahoo / Stooq, solo para tu investigación personal, mientras no tengas "
-                                     "conectada una cuenta de bróker.")
+        self.research_btn = QPushButton(t("Use public web sources"))
+        self.research_btn.setToolTip(t("Yahoo / Stooq, for your personal research only, while you have "
+                                       "no broker account connected."))
         self.research_btn.clicked.connect(self.use_research.emit)
         self.banner = QFrame()
         self.banner.setObjectName("banner")
@@ -260,9 +313,9 @@ class SignalsPage(QWidget):
 
         # left: filter + events
         self.filter = QLineEdit()
-        self.filter.setPlaceholderText("Filtrar por ticker")
+        self.filter.setPlaceholderText(t("Filter by ticker"))
         self.filter.setClearButtonEnabled(True)
-        self.filter.setAccessibleName("Filtrar los eventos por ticker")
+        self.filter.setAccessibleName(t("Filter the events by ticker"))
         self.filter.textChanged.connect(self._apply_filter)
         self.count = _label("", "label")
         head = QHBoxLayout()
@@ -270,11 +323,12 @@ class SignalsPage(QWidget):
         head.addWidget(self.filter, 1)
         head.addWidget(self.count)
         self.list = QListWidget()
-        self.list.setAccessibleName("Eventos nuevos")
+        self.list.setAccessibleName(t("New events"))
         self.list.setUniformItemSizes(False)
         self.list.currentItemChanged.connect(self._show_selected)
-        self.empty = muted("Aún no hay búsqueda. Pulsa «Buscar eventos»: la primera vez descarga los Form 4 "
-                           "de la SEC de esos días y puede tardar varios minutos. Todo queda en caché.")
+        self.empty = muted(t("No search yet. Press «Update data»: the first time it downloads the SEC "
+                             "Form 4 filings of those days and can take several minutes. Everything is "
+                             "cached."))
         left = QVBoxLayout()
         left.setSpacing(10)
         left.addLayout(head)
@@ -319,22 +373,22 @@ class SignalsPage(QWidget):
         b = QVBoxLayout(box)
         b.setContentsMargins(14, 12, 14, 12)
         b.setSpacing(8)
-        b.addWidget(_label("Evidencia", "h2"))
+        b.addWidget(_label(t("Evidence"), "h2"))
         b.addWidget(self.evidence_text)
         b.addWidget(self.outcome)
         b.addWidget(self.legend)
         self.similar = muted("")
         self.rules_text = _label("", "body", wrap=True)
         self.context = muted("")
-        self.preview_btn = QPushButton("Vista previa en Schwab")
+        self.preview_btn = QPushButton(t("Preview on Schwab"))
         self.preview_btn.setObjectName("primary")
-        self.practice_btn = QPushButton("Añadir a práctica")
+        self.practice_btn = QPushButton(t("Add to practice"))
         self.practice_btn.clicked.connect(self.add_to_practice)
         self.preview_btn.setEnabled(False)
-        self.preview_btn.setToolTip("Necesita una sesión de Schwab activa: la vista previa la da el bróker.")
-        for w in (_label("OPERACIÓN DE REFERENCIA", "label"), self.profile, self.contract, box, self.similar,
-                  _label("REGLAS VALIDADAS", "label"), self.rules_text, _label("CONTEXTO (NO DISPARA SEÑALES)", "label"),
-                  self.context):
+        self.preview_btn.setToolTip(t("Needs an active Schwab session: the preview comes from the broker."))
+        for w in (_label(t("REFERENCE TRADE"), "label"), self.profile, self.contract, box, self.similar,
+                  _label(t("VALIDATED RULES"), "label"), self.rules_text,
+                  _label(t("CONTEXT (DOES NOT TRIGGER SIGNALS)"), "label"), self.context):
             s.addWidget(w)
         s.addStretch(1)
         detail = QWidget()
@@ -347,7 +401,9 @@ class SignalsPage(QWidget):
         outer.addWidget(scroll, 1)
         outer.addWidget(self.preview_btn)
         outer.addWidget(self.practice_btn)
-        outer.addWidget(muted(DISCLAIMER))
+        self.honesty = muted("")
+        outer.addWidget(self.honesty)
+        outer.addWidget(muted(t(DISCLAIMER)))
 
         body = QHBoxLayout()
         body.setSpacing(24)
@@ -375,6 +431,23 @@ class SignalsPage(QWidget):
         self.refresh()
 
     # ------------------------------------------------------------------ data
+
+    def _days_changed(self, days: int) -> None:
+        """Remember the window and re-read the list. It does not download: that is the button."""
+        cfg = data.read_settings(self.settings_path)
+        if cfg.data.scan_days != days:
+            cfg.data.scan_days = days
+            data.write_settings(cfg, self.settings_path)
+        self.apply_filters()
+
+    def refresh_days(self) -> None:
+        """Follow the window when it is changed from the Settings screen instead."""
+        window = data.read_settings(self.settings_path).data.scan_days
+        if window != self.days.value():
+            self.days.blockSignals(True)
+            self.days.setValue(window)
+            self.days.blockSignals(False)
+            self.apply_filters()
 
     def _cap_changed(self, tier: str) -> None:
         data.set_cap_tier(tier, self.settings_path)
@@ -416,43 +489,143 @@ class SignalsPage(QWidget):
 
         try:
             # the source this app is configured with, not whatever the default settings file says
-            ok, why = source_ready(data.read_settings(self.settings_path).data.price_source)
+            ok, why = source_ready(data.read_settings(self.settings_path).data.price_source,
+                                   translate=t)
         except Exception as e:
-            ok, why = False, f"No se pudo comprobar la fuente de precios: {e}"
+            ok, why = False, t("Could not check the price source: {error}", error=e)
         self.banner.setVisible(not ok)
         d = data.read_settings(self.settings_path).data
         if not self.auto.isActive():
-            self.scan_btn.setText("Actualizar datos")
+            self.scan_btn.setText(t("Update data"))
         elif self.in_refresh_window():
-            self.scan_btn.setText(f"Actualizar datos · automático cada {d.auto_refresh_minutes} min")
+            self.scan_btn.setText(t("Update data · automatic every {minutes} min",
+                                    minutes=d.auto_refresh_minutes))
         else:
-            self.scan_btn.setText("Actualizar datos · automático en pausa")
-            self.scan_btn.setToolTip(f"Fuera de la franja {d.auto_refresh_from}–{d.auto_refresh_to} de "
-                                     "Nueva York. Puedes pulsarlo igualmente.")
-        self.source_msg.setText(why + " Sin precios, la búsqueda no puede empezar.")
+            self.scan_btn.setText(t("Update data · automatic paused"))
+            self.scan_btn.setToolTip(t("Outside the {start}–{end} New York window. You can still press it.",
+                                       start=d.auto_refresh_from, end=d.auto_refresh_to))
+        self.source_msg.setText(t("{reason} Without prices the search cannot start.", reason=why))
         self.scan_btn.setEnabled(ok and self.proc is None)
         self.scan_btn.setToolTip("" if ok else why)
 
     def refresh(self) -> None:
         self.refresh_auto()
+        self.honesty.setText(data.honesty_line(self.reports_dir))
         self.report = latest_history_report(self.reports_dir)
         self.history, self.rules = load_history(self.report) if self.report else (pd.DataFrame(), pd.DataFrame())
         self.scan = load_scan(self.scan_dir)
         self.list.clear()
-        events = self.scan["events"] if self.scan else pd.DataFrame()
-        has = len(events) > 0
+        has = self.stored_events > 0
         self.empty.setVisible(not has)
         self.list.setVisible(has)
-        if self.scan:
-            span = f"{es_date(self.scan['since'], False)} → {es_date(self.scan['end'])}" if self.scan["since"] else ""
-            src = f"evidencia de {self.report.name}" if self.report else "sin reporte con eventos para la evidencia"
-            self.meta.setText(f"Búsqueda {span} · {src}")
+        if has or self.scan:
+            span = (f"{fmt_date(self.scan['since'], False)} → {fmt_date(self.scan['end'])}"
+                    if self.scan and self.scan.get("since") else "")
+            src = (t("evidence from {name}", name=self.report.name) if self.report
+                   else t("no report with events for the evidence"))
+            self.meta.setText(t("Search {span} · {source}", span=span, source=src))
             if not has:
-                self.empty.setText("Ningún evento nuevo en esos días. Prueba con más días.")
+                self.empty.setText(t("No new event in those days. Try more days."))
         else:
-            self.meta.setText("Sin búsqueda todavía")
+            self.meta.setText(t("No search yet"))
         self.filter.setEnabled(has)
         self.apply_filters()
+
+    # ------------------------------------------------------------------ the stored events
+
+    @property
+    def db(self):
+        """The shared market database, opened read-only and lazily. Signals only reads: the scan
+        subprocess is what writes."""
+        if self._db is None:
+            from miratrade import store
+
+            try:
+                self._db = store.connect(read_only=True)
+            except Exception:
+                # Retried next time rather than remembered as broken. A failure here is usually
+                # momentary — the database was being written to, or a scan had not created it yet —
+                # and latching on the first one left the screen empty until the app was restarted.
+                return None
+        return self._db
+
+    @property
+    def stored_events(self) -> int:
+        db = self.db
+        if db is None:
+            return 0
+        try:
+            return int(db.execute("SELECT count(*) AS n FROM events").fetchone()["n"])
+        except Exception:
+            return 0
+
+    def reports_before(self, ticker: str, contract: dict | None):
+        """The earnings date this contract would have to sit through, or ``None``.
+
+        ``None`` also covers "no calendar downloaded", which is not the same as "no report due" — so
+        the absence of a warning is not a promise. Running `miratrade earnings update` is what turns
+        silence into an answer.
+        """
+        from datetime import date as _date
+
+        from miratrade.data.earnings import crosses_earnings
+
+        db = self.db
+        if db is None or not contract or contract.get("expiry") is None:
+            return None
+        try:
+            return crosses_earnings(db, ticker, _date.today(),
+                                   pd.Timestamp(contract["expiry"]).date())
+        except Exception:
+            return None
+
+    def tradeable(self, ticker: str, contract: dict | None):
+        """Whether the quotes make this contract usable, from whatever the chain capture stored.
+
+        With no stored chain it falls back to the share's own liquidity, which is a weaker statement
+        and says so. Both are reported even when they pass, because "checked and fine" and "never
+        checked" must not look the same on screen.
+        """
+        from miratrade.liquidity import check_stored, underlying_liquidity
+
+        if not contract or contract.get("expiry") is None:
+            return None
+        db = self.db
+        try:
+            if db is not None:
+                verdict = check_stored(db, ticker, contract["expiry"], contract["strike"],
+                                       target_pct=contract.get("target_pct", 0.0), cfg=self.cfg)
+                if verdict.measured:
+                    return verdict
+            return underlying_liquidity(self.bars(ticker), self.cfg)
+        except Exception:
+            return None
+
+    def bars(self, ticker: str) -> pd.DataFrame:
+        """The daily bars for one ticker, from the store.
+
+        The store holds every bar ever downloaded, not just the ones the last scan happened to fetch,
+        so a chart is drawn for a ticker whichever scan first brought it in.
+        """
+        from miratrade import store
+
+        db = self.db
+        if db is None:
+            return pd.DataFrame()
+        try:
+            return store.prices(db, [ticker]).get(ticker, pd.DataFrame())
+        except Exception:
+            return pd.DataFrame()
+
+    def reopen_db(self) -> None:
+        """After a scan the database has new rows; a read-only connection in WAL mode may still be
+        looking at the snapshot it opened with, so it is dropped and taken again."""
+        if self._db:
+            try:
+                self._db.close()
+            except Exception:
+                pass
+        self._db = None
 
     def _fill_list(self, events: pd.DataFrame) -> None:
         self.list.clear()
@@ -486,27 +659,37 @@ class SignalsPage(QWidget):
                 item.setSizeHint(QSize(row, card.fit(row - 2 * pad) + 2 * pad))
 
     def apply_filters(self) -> None:
-        """Window, size and ticker are views over the download: rebuild the list, never fetch."""
-        if self.scan is None:
+        """Window, size and ticker are views over what was downloaded, never a reason to fetch.
+
+        They are applied in SQL: with tens of thousands of events stored, narrowing in the database
+        is what keeps changing a dropdown instant instead of re-reading and re-filtering a file.
+        """
+        db = self.db
+        if db is None:
             return
-        events = self.scan["events"]
         tier = self.cap.currentData() or "all"
-        sizes = pd.to_numeric(events["mkt_cap"], errors="coerce") if "mkt_cap" in events else None
-        # An older download has no company sizes, so every tier would empty the list in silence.
-        sizeless = tier != "all" and (sizes is None or not sizes.notna().any())
-        shown = filter_events(events, days=self.days.value(), cap_tier=tier, end=self.scan.get("end"))
+        try:
+            shown = load_events(db, days=self.days.value(), cap_tier=tier,
+                                end=self.scan.get("end") if self.scan else None)
+            sized = int(db.execute("SELECT count(*) AS n FROM events "
+                                   "WHERE mkt_cap IS NOT NULL").fetchone()["n"])
+        except Exception:
+            shown, sized = empty_events(), 0
+        # Events downloaded before the size filter existed have no market capitalisation, so every
+        # tier would empty the list in silence.
+        sizeless = tier != "all" and sized == 0
         self._fill_list(shown)
-        if sizeless and len(events):
-            self.empty.setText("Esta descarga es anterior al filtro de tamaño y no guardó la capitalización "
-                               "de las empresas. Pulsa «Actualizar datos», o elige «Todas» en Tamaño.")
+        if sizeless and self.stored_events:
+            self.empty.setText(t("This download predates the size filter and did not save the companies' "
+                                 "market capitalisation. Press «Update data», or choose «All» under Size."))
             self.empty.setVisible(True)
-        have = covered_days(self.scan)
+        have = stored_days(db)
         asking = self.days.value()
         notes = []
         if asking > have:
-            notes.append(f"Solo hay {have} días descargados; pulsa «Actualizar datos» para traer más.")
+            notes.append(t("Only {days} days downloaded; press «Update data» to bring more.", days=have))
         if tier != "all" and not sizeless:
-            notes.append(f"Filtrando por tamaño: {self.cap.currentText()}.")
+            notes.append(t("Filtering by size: {tier}.", tier=self.cap.currentText()))
         self.coverage.setText("  ".join(notes))
         self.coverage.setVisible(bool(notes))
 
@@ -523,9 +706,10 @@ class SignalsPage(QWidget):
             if match:
                 shown += 1
                 first = first or item
-        self.count.setText("" if not total else f"{shown} DE {total}" if needle else f"{total} EVENTOS")
+        self.count.setText("" if not total else t("{shown} OF {total}", shown=shown, total=total)
+                           if needle else t("{count} EVENTS", count=total))
         if total:
-            self.empty.setText(f"Ningún evento con «{self.filter.text().strip()}».")
+            self.empty.setText(t("No event matching «{text}».", text=self.filter.text().strip()))
             self.empty.setVisible(shown == 0)
         current = self.list.currentItem()
         if first is not None and (current is None or current.isHidden()):
@@ -543,11 +727,11 @@ class SignalsPage(QWidget):
 
     def _show_selected(self, item: QListWidgetItem | None, _prev=None) -> None:
         v = self.variant.currentData()
-        self.profile.setText(variant_label(v, self.cfg))
+        self.profile.setText(variant_label(v, self.cfg, t))
         if item is None:
             self._contract = None
             self.practice_btn.setEnabled(False)
-            self.contract.set_contract("", None, "Elige un evento.")
+            self.contract.set_contract("", None, t("Pick an event."))
             for w in (self.ticker, self.price, self.change, self.evidence_text, self.legend, self.similar,
                       self.rules_text, self.context):
                 w.setText("")
@@ -555,37 +739,40 @@ class SignalsPage(QWidget):
             self.chart.set_data(None)
             return
         ev = item.data(Qt.UserRole)
-        t = ev["ticker"]
-        prices = (self.scan or {}).get("prices", {}).get(t, pd.DataFrame())
-        self.ticker.setText(t)
+        ticker = ev["ticker"]
+        prices = self.bars(ticker)
+        self.ticker.setText(ticker)
         if len(prices) >= 2:
             last, prev = prices["close"].iat[-1], prices["close"].iat[-2]
-            self.price.setText(f"{es_num(last)} $")
+            self.price.setText(f"{fmt_num(last)} $")
             ch = last / prev - 1
-            self.change.setText(f"{es_num(ch * 100, 1, sign=True)} %")
+            self.change.setText(f"{fmt_num(ch * 100, 1, sign=True)} %")
             self.change.setStyleSheet(f"color: {theme.UP if ch >= 0 else theme.DOWN}")
         contract = contract_for(prices, ev["signal_date"], v, self.cfg) if len(prices) else None
         self._contract = contract
         self.practice_btn.setEnabled(contract is not None)
-        self.contract.set_contract(t, contract, "" if v.startswith("call") else
-                                   "Este perfil compra la acción, no una opción.")
+        self.contract.set_contract(ticker, contract, "" if v.startswith("call") else
+                                   t("This profile buys the shares, not an option."),
+                                   reports=self.reports_before(ticker, contract),
+                                   tradeable=self.tradeable(ticker, contract))
         kind = next((k for k in EVENT_TYPES if ev.get(k)), "event:insider_buy")
         color, shape, _ = theme.EVENT_STYLE[kind]
         self.chart.set_data(prices, ev["signal_date"], color, shape)
 
         e = evidence(ev, self.history, v, self.rules)
-        self.evidence_text.setText(e.sentence if self.report else "No hay un reporte con eventos: ejecuta un "
-                                   "análisis en Reportes para tener evidencia.")
+        self.evidence_text.setText(e.say(t, fmt_num) if self.report else
+                                   t("There is no report with events: run an analysis under Reports to "
+                                     "have evidence."))
         self.outcome.set(e.target, e.stop, e.neither)
-        self.legend.setText("verde: objetivo · coral: stop · gris: ninguno" if e.n else "")
-        narrowed = [CONDITION_LABELS.get(c, c) for c in e.similar_to]
-        self.similar.setText(("Parecidos = mismo tipo de evento" + (", " + ", ".join(narrowed) if narrowed else "")
-                              + ".") if e.n else "")
+        self.legend.setText(t("green: target · coral: stop · grey: neither") if e.n else "")
+        narrowed = [t(CONDITION_LABELS[c]) if c in CONDITION_LABELS else c for c in e.similar_to]
+        self.similar.setText((t("Similar = same kind of event")
+                              + (", " + ", ".join(narrowed) if narrowed else "") + ".") if e.n else "")
         self.rules_text.setText(", ".join(e.rules) if e.rules else
-                                "Ninguna todavía: el análisis no ha confirmado ninguna regla para este perfil. "
-                                "Trata la evidencia como historial, no como predicción.")
+                                t("None yet: the analysis has not confirmed any rule for this profile. "
+                                  "Treat the evidence as history, not as a forecast."))
         ctx = [label for c, label in CONTEXT_LABELS.items() if ev.get(c) is True or ev.get(c) == 1]
-        self.context.setText("\n".join(f"• {c}" for c in ctx) or "Nada destacable.")
+        self.context.setText("\n".join(f"• {t(c)}" for c in ctx) or t("Nothing remarkable."))
 
     def add_to_practice(self) -> None:
         """Open the contract on screen as a paper position, sized by the risk settings."""
@@ -594,28 +781,32 @@ class SignalsPage(QWidget):
         item = self.list.currentItem()
         contract = self._contract
         if item is None or contract is None:
-            QMessageBox.information(self, "Práctica", "Elige un evento con contrato para añadirlo.")
+            QMessageBox.information(self, t("Practice"), t("Pick an event with a contract to add it."))
             return
         ev = item.data(Qt.UserRole)
         trades = load(PRACTICE_PATH)
         cfg = data.read_settings(self.settings_path)
-        equity, _source = account_equity(data.quote_broker(self.settings_path))
+        broker = data.quote_broker(self.settings_path) if cfg.risk.size_on_balance else None
+        equity, _source = account_equity(broker, cfg=cfg)
         try:
             trade = open_trade(
                 trades, ticker=ev["ticker"], kind="call", entry=contract["premium"],
                 stop=contract["stop"], target=contract["target"],
-                equity=equity, note=str(ev.get("what", ""))[:120],
+                equity=equity, note=event_note(ev)[:120],
                 strike=contract["strike"], expiry=str(contract["expiry"].date()), iv=contract["iv"], cfg=cfg)
         except ValueError as e:
-            QMessageBox.warning(self, "Práctica", str(e))
+            QMessageBox.warning(self, t("Practice"), t(str(e)))
             return
         save(trades, PRACTICE_PATH)
         self.practice_added.emit()
+        from miratrade.app.pages.practice import trade_label
+
         QMessageBox.information(
-            self, "Práctica",
-            f"Añadida: {trade.quantity} × {trade.label()}\n\n"
-            f"Coste {trade.cost:,.0f} $ · riesgo hasta el stop {trade.risk:,.0f} $.\n"
-            "Sin dinero real; la verás en la pantalla Práctica.")
+            self, t("Practice"),
+            t("Added: {quantity} × {label}", quantity=trade.quantity, label=trade_label(trade)) + "\n\n"
+            + t("Cost {cost} $ · risk to the stop {risk} $.", cost=f"{trade.cost:,.0f}",
+                risk=f"{trade.risk:,.0f}") + "\n"
+            + t("No real money; you will see it on the Practice screen."))
 
     # ------------------------------------------------------------------ running a scan
 
@@ -630,8 +821,8 @@ class SignalsPage(QWidget):
         self.log.show()
         self.scan_btn.setEnabled(False)
         self.cancel_btn.show()
-        window = data.read_settings(self.settings_path).data.scan_days
-        self.meta.setText(f"Descargando los últimos {window} días…")
+        window = self.days.value()               # the control on screen is the window, full stop
+        self.meta.setText(t("Downloading the last {days} days…", days=window))
         self.proc.start(sys.executable, data.scan_command(window, self.variant.currentData(),
                                                           self.scan_dir, self.report, "all"))
 
@@ -648,11 +839,13 @@ class SignalsPage(QWidget):
         self.cancel_btn.hide()
         if code == 0:
             self.log.hide()
+            if self._owns_db:
+                self.reopen_db()             # the scan wrote rows this connection cannot see
             self.refresh()
         else:
-            self.meta.setText(f"La búsqueda terminó con error (código {code}). Revisa el registro.")
+            self.meta.setText(t("The search ended with an error (code {code}). Check the log.", code=code))
 
     def cancel_scan(self) -> None:
         if self.proc is not None:
             self.proc.kill()
-            self.meta.setText("Cancelada. Lo descargado queda en caché.")
+            self.meta.setText(t("Cancelled. What was downloaded is kept."))

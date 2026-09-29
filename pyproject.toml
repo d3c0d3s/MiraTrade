@@ -14,7 +14,11 @@ yf = ["yfinance>=0.2.40"]
 schwab = ["schwab-py>=1.5", "keyring>=25"]
 etrade = ["requests-oauthlib>=2.0", "keyring>=25"]
 app = ["PySide6>=6.7"]
-dev = ["pytest>=7", "pytest-qt>=4"]
+# Congressional disclosures are PERSONAL USE ONLY (Ethics in Government Act, 5 U.S.C. app. § 105(c)):
+# they are an extra, not a dependency, because this is the one part that must come out before
+# MiraTrade is sold to anyone. See docs/DATA.md.
+congress = ["pdfplumber>=0.11"]
+dev = ["pytest>=7", "pytest-qt>=4", "pdfplumber>=0.11"]
 
 [project.scripts]
 miratrade = "miratrade.cli:main"

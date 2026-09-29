@@ -24,8 +24,9 @@ import numpy as np
 from miratrade.config import APP_DIR, Config
 
 PRACTICE_PATH = APP_DIR / "practice.json"
-OPEN, CLOSED = "abierta", "cerrada"
-REASONS = {"target": "objetivo", "stop": "stop", "expiry": "vencimiento", "manual": "cierre manual"}
+OPEN, CLOSED = "open", "closed"
+# English source wording; the screens translate it (see app/i18n.py).
+REASONS = {"target": "target", "stop": "stop", "expiry": "expiry", "manual": "manual close"}
 
 
 @dataclass
@@ -75,10 +76,6 @@ class PaperTrade:
         """What reaching the stop would cost from here."""
         return max(0.0, (self.entry - self.stop) * self.quantity * self.multiplier)
 
-    def label(self) -> str:
-        if self.kind != "call":
-            return f"{self.ticker} · acción"
-        return f"{self.ticker} {self.strike:g} C · vence {self.expiry}"
 
 
 # --------------------------------------------------------------------------- storage
@@ -124,20 +121,20 @@ def size_for(equity: float, entry: float, stop: float, multiplier: int, cfg: Con
 def open_trade(trades: list[PaperTrade], *, ticker: str, kind: str, entry: float, stop: float, target: float,
                equity: float, note: str = "", strike: float | None = None, expiry: str | None = None,
                iv: float | None = None, today: date | None = None, cfg: Config = Config()) -> PaperTrade:
-    """Add a position sized by the risk settings. Raises ``ValueError`` when it cannot be opened,
-    with the reason in Spanish, because that message goes straight to the screen."""
+    """Add a position sized by the risk settings. Raises ``ValueError`` when it cannot be opened;
+    the message is the English source the screens translate before showing it."""
     if entry <= 0:
-        raise ValueError("El precio de entrada no es válido.")
+        raise ValueError("The entry price is not valid.")
     if not (stop < entry < target):
-        raise ValueError("El stop debe quedar por debajo de la entrada y el objetivo por encima.")
+        raise ValueError("The stop must sit below the entry and the target above it.")
     if sum(1 for t in trades if t.status == OPEN) >= cfg.risk.max_positions:
-        raise ValueError(f"Ya tienes {cfg.risk.max_positions} posiciones abiertas, el máximo que fijaste.")
+        raise ValueError(f"You already hold {cfg.risk.max_positions} open positions, the maximum you set.")
     if any(t.status == OPEN and t.ticker == ticker for t in trades):
-        raise ValueError(f"Ya tienes una posición abierta en {ticker}.")
+        raise ValueError(f"You already hold an open position in {ticker}.")
     quantity = size_for(equity, entry, stop, 100 if kind == "call" else 1, cfg)
     if quantity < 1:
-        raise ValueError("Con tu riesgo por operación no sale ni una unidad: el stop está demasiado lejos "
-                         "o la cuenta de práctica es pequeña.")
+        raise ValueError("Your risk per trade does not buy a single unit: the stop is too far away "
+                         "or the practice account is small.")
     trade = PaperTrade(id=next_id(trades), opened=str(today or date.today()), ticker=ticker, kind=kind,
                        quantity=quantity, entry=entry, stop=stop, target=target, note=note,
                        strike=strike, expiry=expiry, iv=iv, last=entry)
@@ -196,20 +193,20 @@ def close_trade(trade: PaperTrade, price: float, reason: str = "manual", on: dat
 # --------------------------------------------------------------------------- reading
 
 def summary(trades: list[PaperTrade], start_equity: float) -> dict:
-    """What the Práctica screen shows at the top."""
+    """What the practice screen shows at the top."""
     open_trades = [t for t in trades if t.status == OPEN]
     done = [t for t in trades if t.status == CLOSED]
     realised = sum(t.profit for t in done)
     unrealised = sum(t.profit for t in open_trades)
     wins = [t for t in done if t.profit > 0]
-    return {"abiertas": len(open_trades), "cerradas": len(done),
-            "invertido": sum(t.cost for t in open_trades),
-            "riesgo_abierto": sum(t.risk for t in open_trades),
-            "ganancia_realizada": realised, "ganancia_abierta": unrealised,
+    return {"open": len(open_trades), "closed": len(done),
+            "invested": sum(t.cost for t in open_trades),
+            "open_risk": sum(t.risk for t in open_trades),
+            "realised": realised, "unrealised": unrealised,
             "equity": start_equity + realised + unrealised,
-            "acierto": len(wins) / len(done) if done else float("nan"),
-            "mejor": max((t.profit for t in done), default=float("nan")),
-            "peor": min((t.profit for t in done), default=float("nan"))}
+            "hit_rate": len(wins) / len(done) if done else float("nan"),
+            "best": max((t.profit for t in done), default=float("nan")),
+            "worst": min((t.profit for t in done), default=float("nan"))}
 
 
 def equity_curve(trades: list[PaperTrade], start_equity: float) -> tuple[list[str], list[float]]:
@@ -232,16 +229,28 @@ def equity_from_accounts(accounts) -> float | None:
     return float(sum(values)) if values else None
 
 
-def account_equity(broker=None, fallback: float = DEFAULT_EQUITY) -> tuple[float, str]:
-    """The money practice sizes positions with: the connected broker's real equity when it can be
-    read, otherwise a fixed amount. Returns the value and where it came from, because sizing on a
-    number the user did not expect is worse than sizing on a stated default."""
+def account_equity(broker=None, fallback: float = DEFAULT_EQUITY, cfg: Config | None = None
+                   ) -> tuple[float, str]:
+    """The capital position sizes are worked out from, and where that figure came from.
+
+    By default it is a figure the user typed, **not** their broker balance. Sizing a suggestion to
+    somebody's real account turns analysis of a market into advice about that person's money, which
+    is a different thing to be doing and a different thing to be responsible for. Reading the real
+    balance stays available for the account holder's own use, but it has to be switched on.
+
+    Returning the source as well as the value matters: sizing on a number the user did not expect is
+    worse than sizing on one they chose.
+    """
+    cfg = cfg or Config()
+    typed = float(getattr(cfg.risk, "sizing_capital", fallback) or fallback)
+    if not getattr(cfg.risk, "size_on_balance", False):
+        return typed, "typed"
     if broker is None:
-        return fallback, "default"
+        return typed, "no_broker"
     try:
         equity = equity_from_accounts(broker.accounts())
     except Exception:
-        return fallback, "unreachable"
+        return typed, "unreachable"
     if equity is None or equity <= 0:
-        return fallback, "unreadable"
+        return typed, "unreadable"
     return equity, broker.name

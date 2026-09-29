@@ -14,15 +14,17 @@ from miratrade.app.brand import app_icon, nav_brand
 from miratrade.app.pages.practice import PracticePage
 from miratrade.app.pages.signals import SignalsPage
 from miratrade.app.pages.reports import ReportsPage
+from miratrade.app.pages.scanner import ScannerPage
 from miratrade.app.pages.settings import SettingsPage
 from miratrade.app.widgets import Worker
 
-PAGES = ("Signals", "Practice", "Reports", "Settings")
+PAGES = ("Scanner", "Signals", "Reports", "Practice", "Settings")
 
 
 class MainWindow(QMainWindow):
     def __init__(self, reports_dir: Path | None = None, settings_path: Path | None = None, auth=None,
-                 scan_dir: Path | None = None, etrade_auth=None, practice_path: Path | None = None):
+                 scan_dir: Path | None = None, etrade_auth=None, practice_path: Path | None = None,
+                 db=None):
         super().__init__()
         self.setWindowTitle(f"MiraTrade {__version__}")
         self.resize(1440, 900)
@@ -31,18 +33,21 @@ class MainWindow(QMainWindow):
         self.pool = QThreadPool.globalInstance()
 
         self.pages = QStackedWidget()
-        self.signals = SignalsPage(reports_dir, scan_dir, settings_path=self.settings_path)
+        self.signals = SignalsPage(reports_dir, scan_dir, settings_path=self.settings_path, db=db)
+        self.scanner = ScannerPage(db=db, settings_path=self.settings_path)
         self.practice = PracticePage(practice_path, scan_dir, self.settings_path)
         self.reports = ReportsPage(reports_dir, self.settings_path)
         self.settings = SettingsPage(self.settings_path, auth, etrade_auth)
-        for w in (self.signals, self.practice, self.reports, self.settings):
+        for w in (self.scanner, self.signals, self.reports, self.practice, self.settings):
             self.pages.addWidget(w)
         self.settings.settings_changed.connect(self.refresh_header)
         self.settings.settings_changed.connect(self.signals.refresh_auto)     # source or timer changed
-        self.signals.open_settings.connect(lambda: self.nav.button(3).click())
+        self.settings.settings_changed.connect(self.signals.refresh_days)     # the window changed
+        self.signals.open_settings.connect(lambda: self.nav.button(PAGES.index("Settings")).click())
         self.signals.use_research.connect(self.settings.enable_research_source)
         self.signals.practice_added.connect(self.practice.reload)      # keep the journal in step
         self.reports.report_finished.connect(lambda _path: self.signals.refresh())   # fresher evidence
+        self.reports.report_finished.connect(lambda _path: self.scanner.reload())
 
         # navigation
         nav = QWidget()
@@ -111,6 +116,7 @@ class MainWindow(QMainWindow):
         self.signals.refresh_cap()
         self.reports.refresh_cap()
         self.practice.reload()
+        self.scanner.reload()                  # rows may have arrived since it was last shown
 
     def refresh_header(self) -> None:
         cfg = data.read_settings(self.settings_path)

@@ -1,4 +1,4 @@
-"""Recent events and their historical evidence: the Señales screen and ``miratrade scan``.
+"""Recent events and their historical evidence: the Signals screen and ``miratrade scan``.
 
 A scan fetches the last few days of new insider buys (Form 4), 13D / 13G filings and, when a
 flow directory is given, unusual option prints; builds the same panel as the analysis; and keeps
@@ -19,27 +19,32 @@ import pandas as pd
 
 from miratrade.backtest import build_panel, conditions, entry_trigger
 from miratrade.config import Config
+from miratrade.messages import note, sayer
 from miratrade.outcomes import EVENT_TYPES
 
-EVENT_LABELS = {"event:insider_buy": "Directivos", "event:flow": "Opciones", "event:13dg": "13D / 13G"}
+# Shown by the screens, which translate them.
+EVENT_LABELS = {"event:insider_buy": "Insiders", "event:flow": "Options", "event:13dg": "13D / 13G"}
 # The finer conditions used to narrow "similar events", per event type, most specific last.
 KEY_FLAGS = {"event:insider_buy": ("ins:exec_buy", "ins:big_250k+", "ins:cluster2+"),
              "event:flow": ("flow:bull_1m+",),
              "event:13dg": ("own:13g_active", "own:13d")}
-CONDITION_LABELS = {"ins:exec_buy": "compra un directivo ejecutivo", "ins:big_250k+": "250 000 $ o más",
-                    "ins:cluster2+": "2 o más directivos", "flow:bull_1m+": "1 M$ o más en primas alcistas",
-                    "own:13g_active": "13G de un fondo no indexado", "own:13d": "13D (intención activa)"}
+CONDITION_LABELS = {"ins:exec_buy": "an executive officer buys", "ins:big_250k+": "$250,000 or more",
+                    "ins:cluster2+": "2 insiders or more", "flow:bull_1m+": "$1M or more in bullish premium",
+                    "own:13g_active": "13G from a non-index fund", "own:13d": "13D (active intent)"}
 MIN_SIMILAR = 30
 DEFAULT_VARIANT = "call45_40"
 
 
 # --------------------------------------------------------------------------- profiles
 
-def variant_label(v: str, cfg: Config = Config()) -> str:
-    """``call45_40`` → "Call 45 días · +40 % / −25 %"."""
+def variant_label(v: str, cfg: Config = Config(), translate=None) -> str:
+    """``call45_40`` → "Call 45 days · +40 % / −25 %". ``translate`` is the interface's ``t()``
+    when the label is shown on screen; without it the label comes out in English."""
+    say = sayer(translate)
     kind, pct = v.split("_")
     stops = {int(round(t * 100)): int(round(s * 100)) for t, s in cfg.outcomes.targets}
-    what = f"Acción {kind[5:-1]} meses" if kind.startswith("stock") else f"Call {kind[4:]} días"
+    what = (say("Stock {months} months", months=kind[5:-1]) if kind.startswith("stock")
+            else say("Call {days} days", days=kind[4:]))
     return f"{what} · +{pct} % / −{stops.get(int(pct), '?')} %"
 
 
@@ -119,32 +124,31 @@ def covered_days(scan: Mapping | None) -> int:
 
 
 def describe(ev: Mapping, insiders: pd.DataFrame | None, ownership: pd.DataFrame | None,
-             since: pd.Timestamp, min_value: float = 25_000) -> str:
-    """One plain sentence about what was filed (who bought, how much; who crossed 5 %)."""
-    parts = []
+             since: pd.Timestamp, min_value: float = 25_000) -> list[tuple[str, dict]]:
+    """What was filed (who bought, how much; who crossed 5 %), as the pieces of one plain
+    sentence. They stay as ``(template, fields)`` so the scan can save them and the screen can
+    still show them in the user's language; ``note()`` joins them."""
+    parts: list[tuple[str, dict]] = []
     t = ev["ticker"]
     if ev.get("event:insider_buy") and insiders is not None and len(insiders):
         b = insiders[(insiders["ticker"] == t) & (insiders["code"] == "P") & (insiders["value"] >= min_value)
                      & (pd.to_datetime(insiders["filing_date"]) >= since)]
         if len(b):
-            n = b["owner_cik"].nunique()
-            who = "1 directivo compró" if n == 1 else f"{n} directivos compraron"
-            parts.append(f"{who} {_money(b['value'].sum())}")
+            n = int(b["owner_cik"].nunique())
+            template = ("1 insider bought {amount}" if n == 1 else
+                        "{count} insiders bought {amount}")
+            parts.append((template, {"count": n, "amount": float(b["value"].sum())}))
     if ev.get("event:13dg") and ownership is not None and len(ownership):
         o = ownership[(ownership["ticker"] == t) & (pd.to_datetime(ownership["filing_date"]) >= since)
                       & ~ownership["passive"].astype(bool)]
         if len(o):
             r = o.sort_values("filing_date").iloc[-1]
-            parts.append(f"{str(r['filer']).title()} presentó un {r['kind']}{' (modificación)' if r['amendment'] else ''}")
+            parts.append(("{filer} filed a {kind}" if not r["amendment"] else
+                          "{filer} filed a {kind} (amended)",
+                          {"filer": str(r["filer"]).title(), "kind": r["kind"]}))
     if ev.get("event:flow"):
-        parts.append("opciones con volumen inusual")
-    return "; ".join(parts) or "evento nuevo"
-
-
-def _money(v: float) -> str:
-    if v >= 1e6:
-        return f"{v / 1e6:,.1f} M$".replace(".", ",")
-    return f"{v / 1e3:,.0f} k$".replace(",", ".")
+        parts.append(("options with unusual volume", {}))
+    return parts
 
 
 # --------------------------------------------------------------------------- evidence
@@ -162,13 +166,21 @@ class Evidence:
 
     @property
     def sentence(self) -> str:
+        """The English sentence, which is what the console prints."""
+        return self.say()
+
+    def say(self, translate=None, number=None) -> str:
+        """The same sentence through the interface's ``t()`` and its own number format."""
+        say = sayer(translate)
         if self.n == 0:
-            return "Sin eventos parecidos en el último reporte."
-        pct = lambda x: f"{x * 100:.0f} %"  # noqa: E731
+            return say("No similar event in the latest report.")
+        num = number or (lambda v, decimals=0: f"{v:,.{decimals}f}".replace("-", "−"))
+        pct = lambda x: f"{num(x * 100, 0)} %"  # noqa: E731
         mean = f"{self.mean_return * 100:+.0f}".replace("-", "−")
-        n = f"{self.n:,}".replace(",", ".")
-        return (f"{n} eventos parecidos: {pct(self.target)} llegó antes al objetivo, "
-                f"{pct(self.stop)} al stop y {pct(self.neither)} a ninguno. Resultado medio {mean} %.")
+        return say("{n} similar events: {target} reached the target first, {stop} the stop and "
+                   "{neither} neither. Average result {mean} %.",
+                   n=num(self.n, 0), target=pct(self.target), stop=pct(self.stop),
+                   neither=pct(self.neither), mean=mean)
 
 
 def _true(ev: Mapping, key: str) -> bool:
@@ -297,15 +309,15 @@ def run_scan(days: int = 7, end: date | None = None, cfg: Config = Config(), flo
     # The events are the ones inside the window, but a purchase filed up to `look` days earlier
     # still counts towards the cluster and the amounts on those days, so the download starts there.
     first_filing = since - timedelta(days=look)
-    log(f"Eventos del {since} al {end}. Descargando Form 4 desde el {first_filing}, porque una compra "
-        f"sigue contando {look} días …")
+    log(f"Events from {since} to {end}. Downloading Form 4 filings from {first_filing}, because a "
+        f"purchase keeps counting for {look} days …")
     insiders = fetch["insiders"](first_filing, end)
     new_buys = insiders[(insiders["code"] == "P") & (insiders["value"] >= cfg.insider.min_value_usd)
                         & (pd.to_datetime(insiders["filing_date"]).dt.date >= since)]
     tickers = set(new_buys["ticker"])
     ownership = None
     if smart_money:
-        log(f"13D / 13G desde el {first_filing} (eventos del {since} al {end}) …")
+        log(f"13D / 13G filings from {first_filing} (events from {since} to {end}) …")
         ownership = fetch["ownership"](since - timedelta(days=look), end, insiders)
         fresh = ownership[(pd.to_datetime(ownership["filing_date"]).dt.date >= since) & ~ownership["amendment"].astype(bool)
                           & ~ownership["passive"].astype(bool)]
@@ -324,16 +336,36 @@ def run_scan(days: int = 7, end: date | None = None, cfg: Config = Config(), flo
 
         tickers, stats = filter_by_tier(tickers, cap_from_filings(insiders, shares), tier)
         log("  " + tier_report(stats, tier))
-    log(f"Precios de {len(tickers)} empresas …")
+    # FINRA's off-exchange volume: free, published each evening, and what the dark-pool conditions
+    # read. It was never fetched by a scan, so those conditions could never fire.
+    short_volume = None
+    if smart_money and tickers:
+        try:
+            from miratrade.data.finra import fetch_short_volume
+
+            log(f"Off-exchange volume (FINRA) for {len(tickers)} companies …")
+            short_volume = fetch_short_volume(since - timedelta(days=look), end, tickers=tickers)
+        except Exception as e:          # one optional source must not lose the whole scan
+            log(f"  no off-exchange volume ({e})")
+    log(f"Prices for {len(tickers)} companies …")
     # 400 extra days: 200-day averages at the window start plus a year of chart.
     prices = fetch["prices"](sorted(tickers | {"SPY"}), since - timedelta(days=400), end + timedelta(days=1))
-    panel = build_panel(prices, insiders, flow, cfg, ownership=ownership, shares=shares)
+    panel = build_panel(prices, insiders, flow, cfg, ownership=ownership,
+                        short_volume=short_volume, shares=shares)
     events = recent_events({t: p for t, p in panel.items() if t != "SPY"}, pd.Timestamp(since))
     if len(events):
-        events["what"] = [describe(e, insiders, ownership, pd.Timestamp(since), cfg.insider.min_value_usd)
-                          for e in events.to_dict("records")]
-    log(f"{len(events)} eventos nuevos.")
+        parts = [describe(e, insiders, ownership, pd.Timestamp(since), cfg.insider.min_value_usd)
+                 for e in events.to_dict("records")]
+        # the rendered English for the console, and the pieces so the screen can translate them
+        events["what"] = [note(p) for p in parts]
+        events["what_parts"] = [json.dumps(p) for p in parts]
+    log(f"{len(events)} new events.")
+    # Everything downloaded is returned, not only what the screens draw. A filing fetched and then
+    # dropped is a filing that has to be fetched again, and the 13D/G, the shares outstanding and
+    # the option flow were all being thrown away here while the SEC was asked for them every run.
     return {"events": events, "prices": {t: prices[t] for t in events["ticker"] if t in prices},
+            "insiders": insiders, "ownership": ownership, "shares": shares, "flow": flow,
+            "short_volume": short_volume,
             "since": since, "end": end}
 
 
@@ -366,7 +398,7 @@ def _default_fetchers(log: Callable[[str], None]) -> dict:
         from miratrade.data.fundamentals import fetch_shares, ticker_ciks
 
         tj = json.loads(client.get("https://www.sec.gov/files/company_tickers.json", max_age_days=7))
-        log(f"Acciones en circulación (SEC XBRL) de {len(tickers)} empresas …")
+        log(f"Shares outstanding (SEC XBRL) for {len(tickers)} companies …")
         return fetch_shares(tickers, ticker_ciks(ins, tj, own), client, log)
 
     return {"insiders": insiders, "ownership": ownership, "prices": load_prices, "shares": shares}
@@ -374,13 +406,173 @@ def _default_fetchers(log: Callable[[str], None]) -> dict:
 
 # --------------------------------------------------------------------------- saved scans
 
+# --------------------------------------------------------------------------- events in the store
+
+# The store keeps these as columns of their own, because they are what gets filtered and indexed;
+# every other flag a scan produces travels in `flags` as JSON, so adding a condition needs no
+# migration. The keys are how the pipeline names them, the values how the table does.
+EVENT_KINDS = {"event:insider_buy": "insider_buy", "event:flow": "flow", "event:13dg": "ownership",
+               "event:congress_buy": "congress"}
+EVENT_NAMED = ("ticker", "signal_date", "close", "mkt_cap", "what", "what_parts")
+
+
+def events_to_rows(events: pd.DataFrame) -> pd.DataFrame:
+    """A scan's events as rows of the store's ``events`` table."""
+    if events is None or not len(events):
+        return pd.DataFrame()
+    out = pd.DataFrame(index=events.index)
+    for name in EVENT_NAMED:
+        out[name] = events[name] if name in events else None
+    for source, column in EVENT_KINDS.items():
+        out[column] = events[source].astype(bool).astype(int) if source in events else 0
+    spare = [c for c in events.columns if c not in EVENT_NAMED and c not in EVENT_KINDS
+             and c != "what_parts"]
+    out["flags"] = [json.dumps({c: _plain(row[c]) for c in spare}) for _, row in events.iterrows()]
+    return out
+
+
+def empty_events() -> pd.DataFrame:
+    """No events, but with the columns anyway.
+
+    A caller that finds nothing still asks for ``["ticker"]`` or checks a flag, so an empty result
+    has to be the same shape as a full one. Handing back a bare DataFrame made every such caller
+    crash instead of showing an empty list.
+    """
+    return pd.DataFrame(columns=[*EVENT_NAMED, *EVENT_KINDS])
+
+
+def rows_to_events(rows: pd.DataFrame) -> pd.DataFrame:
+    """…and back: ``flags`` expanded into the columns the screens condition on, so a DataFrame read
+    from the store is the same shape as one straight out of a scan."""
+    if rows is None or not len(rows):
+        return empty_events()
+    out = rows.drop(columns=[c for c in ("flags",) if c in rows.columns]).copy()
+    for source, column in EVENT_KINDS.items():
+        if column in out.columns:
+            out[source] = out.pop(column).fillna(0).astype(bool)
+    spread = pd.DataFrame([json.loads(f or "{}") for f in rows.get("flags", [])], index=rows.index)
+    for column in spread.columns:
+        if column not in out.columns:
+            out[column] = spread[column]
+    return out
+
+
+def _plain(value):
+    """A flag as JSON can hold it: numpy bools and NaN are not JSON."""
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return None
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    if isinstance(value, (np.integer, np.floating)):
+        return value.item()
+    return value if isinstance(value, (int, float, str)) else str(value)
+
+
+def store_scan(result: dict, db=None) -> dict:
+    """Put a finished scan in the shared market database: its events, its price bars and the days it
+    covered. Returns how many rows of each went in.
+
+    This is what makes the screens' filters queries instead of re-reads, and what lets another app
+    see the same events. See docs/DATA.md.
+    """
+    from miratrade import store
+
+    owned, db = db is None, db if db is not None else store.connect()
+    try:
+        written = {"events": store.write(db, "events", events_to_rows(result.get("events")))}
+        bars = 0
+        for ticker, df in (result.get("prices") or {}).items():
+            if df is not None and len(df):
+                bars += store.write(db, "prices", df.assign(ticker=ticker))
+        written["prices"] = bars
+        # The raw filings behind those events, so nothing is ever downloaded twice. `insiders` is
+        # already stored as it is parsed; these three were not stored anywhere at all.
+        written["ownership"] = store.write(db, "ownership", result.get("ownership"))
+        written["shares"] = store.write(db, "shares_outstanding", result.get("shares"))
+        written["short_volume"] = store.write(db, "short_volume", result.get("short_volume"))
+        flow = result.get("flow")
+        if flow is not None and len(flow):
+            written["option_flow"] = store.write(db, "option_flow", flow.assign(source="scan"))
+        since, end = result.get("since"), result.get("end")
+        if since and end:
+            store.mark_covered(db, "events", pd.bdate_range(since, end).date,
+                               rows=written["events"])
+        return written
+    finally:
+        if owned:
+            db.close()
+
+
+def load_events(db, days: int | None = None, cap_tier: str = "all",
+                kinds: tuple[str, ...] | None = None, end: date | None = None,
+                ticker: str = "", limit: int = 5000) -> pd.DataFrame:
+    """Events from the store, narrowed in SQL rather than in memory.
+
+    The window, the company size, the kind of event and the ticker are all views over what was
+    downloaded — never a reason to download again — and doing that narrowing in the database is what
+    keeps changing a dropdown instant with tens of thousands of events stored.
+    """
+    from miratrade import store
+    from miratrade.config import CAP_TIERS
+
+    where, params = [], []
+    if days:
+        last = pd.Timestamp(end) if end is not None else _last_event_day(db)
+        if last is not None:
+            where.append("signal_date > ?")
+            params.append((last - pd.Timedelta(days=days)).strftime("%Y-%m-%d"))
+    if cap_tier and cap_tier != "all":
+        low, high, _label = CAP_TIERS[cap_tier]
+        where.append("mkt_cap IS NOT NULL")          # an unknown size is only kept by "all"
+        if low is not None:
+            where.append("mkt_cap >= ?")
+            params.append(float(low))
+        if high is not None:
+            where.append("mkt_cap < ?")
+            params.append(float(high))
+    if kinds:
+        columns = [EVENT_KINDS[k] for k in kinds if k in EVENT_KINDS]
+        if columns:
+            where.append("(" + " OR ".join(f"{c} = 1" for c in columns) + ")")
+        else:
+            return empty_events()
+    if ticker.strip():
+        wanted = [x.strip().upper() for x in ticker.replace(";", ",").split(",") if x.strip()]
+        if wanted:
+            where.append(f"upper(ticker) IN ({','.join('?' * len(wanted))})")
+            params += wanted
+    rows = store.read(db, "events", " AND ".join(where), params,
+                      order=f"signal_date DESC, ticker LIMIT {int(limit)}")
+    return rows_to_events(rows)
+
+
+def _last_event_day(db):
+    """The newest event stored, so "the last 7 days" means the last 7 days that were downloaded
+    rather than the last 7 calendar days, which may hold nothing at all."""
+    row = db.execute("SELECT max(signal_date) AS d FROM events").fetchone()
+    value = row["d"] if row is not None else None
+    return pd.Timestamp(value) if value else None
+
+
+def stored_days(db) -> int:
+    """How many days of events the store holds, for the screen to say when it has fewer than asked."""
+    row = db.execute("SELECT min(signal_date) AS a, max(signal_date) AS b FROM events").fetchone()
+    if row is None or not row["a"]:
+        return 0
+    return int((pd.Timestamp(row["b"]) - pd.Timestamp(row["a"])).days) + 1
+
+
 def save_scan(result: dict, folder: Path) -> Path:
-    """Keep the last scan so the app shows it on the next start (prices stay in the price cache)."""
+    """Write the last scan as plain files, beside :func:`store_scan`.
+
+    The shared market database is what the screens read; this is the readable copy — one CSV anyone
+    can open, and the window the scan covered. The price bars are **not** written here any more:
+    they live in the database, and a copy per ticker per scan was tens of thousands of duplicated
+    rows on disk for something nothing read.
+    """
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     result["events"].to_csv(folder / "events.csv", index=False)
-    for t, df in result["prices"].items():
-        df.to_csv(folder / f"prices_{t}.csv")
     (folder / "meta.txt").write_text(f"{result['since']}\n{result['end']}\n", encoding="utf-8")
     return folder
 

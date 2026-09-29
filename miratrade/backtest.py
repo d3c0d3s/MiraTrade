@@ -23,11 +23,14 @@ from miratrade.survivorship import delisted_tickers
 
 def build_panel(prices: dict[str, pd.DataFrame], insiders: pd.DataFrame, flow: pd.DataFrame,
                 cfg: Config = Config(), market: str = "SPY", ownership: pd.DataFrame | None = None,
-                short_volume: pd.DataFrame | None = None, shares: pd.DataFrame | None = None
-                ) -> dict[str, pd.DataFrame]:
-    """``ownership`` (13D/13G filings), ``short_volume`` (FINRA) and ``shares`` (shares
-    outstanding by filing date, for market cap) are optional; without them their features are
-    zero / NaN and the matching conditions never fire."""
+                short_volume: pd.DataFrame | None = None, shares: pd.DataFrame | None = None,
+                earnings: dict[str, pd.Series] | None = None) -> dict[str, pd.DataFrame]:
+    """``ownership`` (13D/13G filings), ``short_volume`` (FINRA), ``shares`` (shares outstanding by
+    filing date, for market cap) and ``earnings`` (days until the next announcement per ticker) are
+    optional; without them their features are zero / NaN and the matching conditions never fire.
+
+    That last part is deliberate rather than convenient: a condition that silently reads False when
+    its data is absent would mine a rule out of missing data, so an unknown stays unknown."""
     from miratrade.data.fundamentals import market_cap
 
     unusual = unusual_prints(flow, cfg.flow)
@@ -49,6 +52,8 @@ def build_panel(prices: dict[str, pd.DataFrame], insiders: pd.DataFrame, flow: p
         ind = ind.join(short_features(short_volume, ind.index, t, cfg.smart))
         ind = ind.join(dark_features(short_volume, ind["volume"], t, cfg.smart))
         ind["mkt_cap"] = market_cap(ind.index, ind["close"], shares, t)
+        if earnings is not None and t in earnings:
+            ind["days_to_earnings"] = earnings[t].reindex(ind.index)
         if mkt is not None:
             ind = ind.join(mkt).fillna({"mkt_up": 0.0, "mkt_trend": "unknown", "mkt_vol": "unknown"})
         panel[t] = ind
@@ -125,6 +130,22 @@ def conditions(row: pd.Series) -> dict[str, bool]:
     c["vol:rel>1.5"] = row["rel_volume"] > 1.5
     if "mkt_up" in row:
         c["mkt:spy_above_50d"] = bool(row["mkt_up"])
+    # Days until the company's next results announcement, where it is known. Two things happen around
+    # one and both work against a bought call: implied volatility collapses once the news is out, and
+    # the gap can open straight through a stop. `earn:clear` is the base case — far enough away that
+    # neither applies — and it is stated as its own condition so the miner can pick it rather than
+    # having to infer it from the absence of the others.
+    #
+    # A caution for whoever reads the result: an insider usually cannot trade in the weeks before
+    # results, so an insider buy filed days beforehand is an unusual filing to begin with — possibly a
+    # 10b5-1 plan or a different kind of filer. A gradient here may be about *who filed* rather than
+    # about earnings risk, and that has to be told apart before believing either.
+    to_earnings = row.get("days_to_earnings", np.nan)
+    if np.isfinite(to_earnings):
+        c["earn:within_7d"] = to_earnings <= 7
+        c["earn:within_21d"] = to_earnings <= 21
+        c["earn:before_expiry"] = to_earnings <= 45      # a 45-day contract would sit through it
+        c["earn:clear"] = to_earnings > 45
     cap = row.get("mkt_cap", np.nan)
     known = bool(np.isfinite(cap)) and cap > 0
     c["cap:small"] = known and cap < 2e9                          # small and micro caps

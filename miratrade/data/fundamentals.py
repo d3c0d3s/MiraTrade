@@ -64,7 +64,7 @@ def fetch_shares(tickers, ciks: dict[str, str], client, log: Callable[[str], Non
         try:
             raw = client.get(SHARES_URL.format(cik=int(cik)), missing=(404,), max_age_days=7)
         except Exception as e:                               # one company failing must not stop the run
-            log(f"  sin acciones en circulación para {t}: {e}")
+            log(f"  no shares outstanding for {t}: {e}")
             continue
         if raw is None:
             continue
@@ -123,11 +123,16 @@ def filter_by_tier(tickers: Iterable[str], caps: pd.Series, tier: str) -> tuple[
     return kept, {"kept": len(kept), "too_big_or_small": off_band, "unknown": unknown}
 
 
-def tier_report(stats: dict, tier: str) -> str:
+def tier_report(stats: dict, tier: str, translate=None) -> str:
+    """How many companies the size filter kept. ``translate`` is the interface's ``t()``."""
+    from miratrade.messages import sayer
+
+    say = sayer(translate)
     if tier == "all":
-        return f"Todos los tamaños: {stats['kept']} empresas."
-    return (f"Tamaño «{CAP_TIERS[tier][2]}»: {stats['kept']} empresas; "
-            f"{stats['too_big_or_small']} fuera del tramo y {stats['unknown']} sin dato de tamaño.")
+        return say("Every size: {kept} companies.", kept=stats["kept"])
+    return say("Size «{tier}»: {kept} companies; {off} outside the band and {unknown} with no size "
+               "figure.", tier=say(CAP_TIERS[tier][2]), kept=stats["kept"],
+               off=stats["too_big_or_small"], unknown=stats["unknown"])
 
 
 def market_cap(dates: pd.DatetimeIndex, close: pd.Series, shares: pd.DataFrame | None, ticker: str) -> pd.Series:

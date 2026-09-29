@@ -309,128 +309,161 @@ def _finish(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def parse_daily_index(text: str) -> list[tuple[str, str]]:
-    """Return ``(accession_path, date_filed)`` for every Form 4 in a ``form.YYYYMMDD.idx``."""
+    """Return ``(accession_path, date_filed)`` for every Form 4 in a ``form.YYYYMMDD.idx``.
+
+    The index lists one line per filer, so a Form 4 appears twice — once under the company's CIK and
+    once under the insider's — as two paths to the very same document. Deduplicating by accession
+    rather than by path halves the filings to download, which is most of what a scan spends its time
+    on, and keeps the same transaction from being counted twice.
+    """
     out, seen = [], set()
     for line in text.splitlines():
         if not line.startswith("4 "):
             continue
         path = line.split()[-1]
         date_filed = line.split()[-2]
-        if path.startswith("edgar/") and path not in seen:
-            seen.add(path)
+        accession = Path(path).stem
+        if path.startswith("edgar/") and accession not in seen:
+            seen.add(accession)
             out.append((path, date_filed))
     return out
 
 
 # --------------------------------------------------------------------------- orchestration
 
-def _day_cache(cache_dir: Path, day: date) -> Path:
-    return Path(cache_dir) / "parsed" / f"form4_{day:%Y%m%d}.pkl"
+SOURCE = "sec_form4"        # the name this source has in the store's coverage table
 
 
-def read_parsed_day(path: Path) -> pd.DataFrame | None:
-    """A finished day's parsed rows, exactly as parsing produced them. Text formats round floats
-    and change dtypes, which would make two runs on the same filings disagree, so the table is
-    stored as-is. Anything unreadable (half-written, another pandas) gives ``None`` and the day is
-    parsed again."""
-    try:
-        df = pd.read_pickle(path)
-    except Exception:
-        return None
-    return df if isinstance(df, pd.DataFrame) and list(df.columns) == INSIDER_COLUMNS else None
+def _quarter_days(year: int, q: int) -> list[date]:
+    start = date(year, 3 * q - 2, 1)
+    end = date(year + (q == 4), 1 if q == 4 else 3 * q + 1, 1) - timedelta(days=1)
+    return list(pd.bdate_range(start, end).date)
 
 
-def write_parsed_day(df: pd.DataFrame, path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    df.reindex(columns=INSIDER_COLUMNS).to_pickle(tmp)
-    tmp.replace(path)
+def _parse_day(client: SecClient, year: int, q: int, day: date) -> tuple[pd.DataFrame | None, int]:
+    """Every Form 4 filed on one day, from the daily index. ``None`` means the index itself was not
+    there, which is not the same as a day on which nothing was filed."""
+    idx = client.get(DAILY_INDEX_URL.format(year=year, q=q, ymd=day.strftime("%Y%m%d")),
+                     missing=(403, 404))
+    if idx is None:
+        return None, 0
+    filings = parse_daily_index(idx.decode("latin-1"))
+    print(f"  {day}: {len(filings)} Form 4 filings", flush=True)
+
+    def download(item):
+        path, filed = item
+        try:
+            return path, filed, client.get(ARCHIVE_URL.format(path=path))
+        except Exception as e:          # one filing must not kill the run; counted and reported
+            return path, filed, e
+
+    with ThreadPoolExecutor(max_workers=PARALLEL_FILINGS) as pool:
+        fetched = list(pool.map(download, filings))
+    frames, failed = [], 0
+    for path, filed, raw in fetched:
+        if isinstance(raw, Exception):
+            failed += 1
+            print(f"    skipped {path}: {raw}", flush=True)
+            continue
+        if raw is None:
+            continue
+        m = re.search(rb"<ownershipDocument>.*?</ownershipDocument>", raw, re.S)
+        if not m:
+            continue
+        try:
+            frames.append(parse_form4_xml(m.group(0).decode("utf-8", "replace"),
+                                          accession=Path(path).stem, filing_date=filed))
+        except ET.ParseError:
+            continue
+    rows = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=INSIDER_COLUMNS)
+    return rows, failed
 
 
 def fetch_insiders(start: date, end: date, client: SecClient | None = None,
-                   codes: tuple[str, ...] = ("P", "S"), today: date | None = None) -> pd.DataFrame:
-    """All open-market insider buys/sells filed between ``start`` and ``end`` (inclusive).
+                   codes: tuple[str, ...] = ("P", "S"), today: date | None = None,
+                   db=None) -> pd.DataFrame:
+    """All insider transactions with these ``codes`` filed between ``start`` and ``end`` (inclusive).
 
     Raw filings are cached, but rebuilding a table from each of a thousand XMLs a day is what
-    actually costs the time. A day that is over cannot gain filings, so its parsed rows are cached
-    too and later runs just read them. ``today`` says which day and quarter are still open."""
+    actually costs the time. So a day that is over — and cannot gain filings — is parsed once, its
+    rows go into the shared market database and the day is marked covered; later runs read them back
+    with a query. ``today`` says which day and quarter are still open, and both are always re-read.
+
+    Everything parsed is stored, not just the ``codes`` asked for, so a second app finds the whole
+    picture in the database instead of having to download it again.
+    """
+    from miratrade import store
+
     client = client or SecClient()
-    frames = []
     today = today or date.today()
     current_q = (today.year, (today.month - 1) // 3 + 1)
-
-    quarters = sorted({(d.year, (d.month - 1) // 3 + 1)
-                       for d in pd.date_range(start, end, freq="D").date})
+    owned = db is None
+    db = db if db is not None else store.connect()
     failed = 0
-    for year, q in quarters:
-        blob = None
-        if (year, q) != current_q:
-            for url in BULK_URLS:
-                blob = client.get(url.format(year=year, q=q))
-                if blob is not None:
-                    break
-        if blob is not None:
-            frames.append(parse_bulk_zip(blob))
-            continue
-        # Bulk set not published yet: walk the daily index for that quarter's days.
-        q_start = max(start, date(year, 3 * q - 2, 1))
-        q_end = min(end, (date(year + (q == 4), 1 if q == 4 else 3 * q + 1, 1) - timedelta(days=1)))
-        for day in pd.bdate_range(q_start, q_end).date:
-            finished = day < today
-            day_cache = _day_cache(client.cache_dir, day)
-            cached_rows = read_parsed_day(day_cache) if finished and day_cache.exists() else None
-            if cached_rows is not None:
-                if len(cached_rows):
-                    frames.append(cached_rows)
+    try:
+        wanted = [d for d in pd.bdate_range(start, end).date if d < today]
+        todo = set(store.gaps(db, SOURCE, wanted))
+        for year, q in sorted({(d.year, (d.month - 1) // 3 + 1) for d in wanted if d in todo}):
+            blob = None
+            if (year, q) != current_q:
+                for url in BULK_URLS:
+                    blob = client.get(url.format(year=year, q=q))
+                    if blob is not None:
+                        break
+            if blob is not None:
+                # One zip holds the whole quarter, so every business day in it is now covered.
+                rows = parse_bulk_zip(blob)
+                store.write(db, "insiders", rows)
+                store.mark_covered(db, SOURCE, _quarter_days(year, q), rows=len(rows))
                 continue
-            idx = client.get(DAILY_INDEX_URL.format(year=year, q=q, ymd=day.strftime("%Y%m%d")),
-                             missing=(403, 404))
-            if idx is None:
-                continue
-            filings = parse_daily_index(idx.decode("latin-1"))
-            print(f"  {day}: {len(filings)} Form 4 filings", flush=True)
-            day_frames = []
-            def download(item):
-                path, filed = item
-                try:
-                    return path, filed, client.get(ARCHIVE_URL.format(path=path))
-                except Exception as e:      # one filing must not kill the run; reported below
-                    return path, filed, e
+            # Bulk set not published yet: walk the daily index for the days still missing.
+            for day in sorted(d for d in wanted if d in todo
+                              and (d.year, (d.month - 1) // 3 + 1) == (year, q)):
+                rows, day_failed = _parse_day(client, year, q, day)
+                failed += day_failed
+                if rows is None:
+                    continue                       # no index published for that day: ask again later
+                store.write(db, "insiders", rows)
+                if not day_failed:                 # a partial day must not be remembered as complete
+                    store.mark_covered(db, SOURCE, [day], rows=len(rows))
 
-            with ThreadPoolExecutor(max_workers=PARALLEL_FILINGS) as pool:
-                fetched = list(pool.map(download, filings))
-            for path, filed, raw in fetched:
-                if isinstance(raw, Exception):
-                    failed += 1
-                    print(f"    skipped {path}: {raw}", flush=True)
-                    continue
-                if raw is None:
-                    continue
-                m = re.search(rb"<ownershipDocument>.*?</ownershipDocument>", raw, re.S)
-                if not m:
-                    continue
-                try:
-                    day_frames.append(parse_form4_xml(m.group(0).decode("utf-8", "replace"),
-                                                      accession=Path(path).stem,
-                                                      filing_date=filed))
-                except ET.ParseError:
-                    continue
-            day_rows = (pd.concat(day_frames, ignore_index=True) if day_frames
-                        else pd.DataFrame(columns=INSIDER_COLUMNS))
-            if finished:
-                write_parsed_day(day_rows, day_cache)
-            if len(day_rows):
-                frames.append(day_rows)
+        if today <= end:                           # today can still gain filings: never cached
+            year, q = current_q
+            rows, day_failed = _parse_day(client, year, q, today)
+            failed += day_failed
+            store.write(db, "insiders", rows)
 
-    if failed:
-        print(f"  {failed} Form 4 filings could not be downloaded and were skipped; "
-              "re-run later to fill them in (the rest is cached).", flush=True)
-    if not frames:
-        return pd.DataFrame(columns=INSIDER_COLUMNS)
-    df = pd.concat(frames, ignore_index=True)
-    mask = (df["filing_date"].dt.date >= start) & (df["filing_date"].dt.date <= end)
-    df = df[mask & df["code"].isin(codes) & df["ticker"].str.fullmatch(r"[A-Z.]{1,6}", na=False)]
+        if failed:
+            print(f"  {failed} Form 4 filings could not be downloaded and were skipped; "
+                  "re-run later to fill them in (the rest is stored).", flush=True)
+        df = store.read(db, "insiders",
+                        f"filing_date >= ? AND filing_date <= ? AND code IN ({','.join('?' * len(codes))})",
+                        [start.isoformat(), end.isoformat(), *codes], order="filing_date, ticker")
+    finally:
+        if owned:
+            db.close()
+    df = df.reindex(columns=INSIDER_COLUMNS)
+    for col in ("is_officer", "is_director", "is_ten_pct", "plan_10b5_1"):
+        df[col] = df[col].fillna(0).astype(bool)
+    df["ticker"] = primary_ticker(df["ticker"])
+    df = df[df["ticker"].str.fullmatch(r"[A-Z.]{1,6}", na=False)]
     return df.drop_duplicates().reset_index(drop=True)
+
+
+def primary_ticker(tickers: pd.Series) -> pd.Series:
+    """The first symbol when a filing lists several share classes in its ticker field.
+
+    A company with two classes is sometimes filed as ``"LEN, LEN.B"``, and rejecting that as
+    malformed threw the row away: Berkshire Hathaway's first Form 4 for Lennar — $212M of
+    open-market buying — was invisible to MiraTrade for exactly this reason.
+
+    The transaction is in one class and the field does not say which, so the first symbol is taken.
+    That can attribute a purchase of the B shares to the A shares; for the question MiraTrade asks —
+    did someone buy a lot of this company — that is a far smaller error than losing the filing.
+    The store keeps the field as filed; this normalisation is on the way out of it.
+    """
+    return (tickers.fillna("").astype(str).str.upper().str.strip()   # strip first: " PFE " would
+            .str.split(r"[,/;\s]+", regex=True).str[0])              # otherwise split to an empty [0]
 
 
 # Placeholder tickers filers type when the issuer has none.

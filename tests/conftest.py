@@ -14,3 +14,26 @@ def _spanish_interface(request):
     set_language("es")
     yield
     set_language(before)
+
+
+@pytest.fixture(autouse=True)
+def _never_the_real_database(tmp_path, monkeypatch):
+    """Every test gets its own market database, whether it asks for one or not.
+
+    Four separate bugs this session came from a test reaching the real store: it hung waiting on a
+    lock, it failed for reasons unrelated to the test, and once it masked genuine corruption as a
+    hanging test. A test that forgets to pass ``db=`` would also *write* to the user's own data.
+    Making it impossible is worth more than remembering every time.
+    """
+    import miratrade.backup
+    import miratrade.config
+    import miratrade.store.db
+
+    path = tmp_path / "test-market.db"
+    for module in (miratrade.config, miratrade.store.db, miratrade.backup):
+        if hasattr(module, "DB_PATH"):
+            monkeypatch.setattr(module, "DB_PATH", path)
+    for module in (miratrade.config, miratrade.backup):
+        if hasattr(module, "DATA_HOME"):
+            monkeypatch.setattr(module, "DATA_HOME", tmp_path / "data-home")
+    yield path
