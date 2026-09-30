@@ -4,13 +4,13 @@ from __future__ import annotations
 import secrets
 
 from miratrade import store
-from miratrade.app import data
+from miratrade.config import load_user_config
 from miratrade.notify import EMAIL_KEY, notify_new
 
 
 def cmd_setup(a) -> None:
     """Save where to send. The email password goes to the Windows Credential Manager, never a file."""
-    cfg = data.read_settings()
+    cfg = load_user_config()
     if a.ntfy_topic is not None:
         cfg.notify.ntfy_topic = a.ntfy_topic.strip()
     if a.email_to is not None:
@@ -48,7 +48,7 @@ def cmd_send(a) -> None:
 
     db = store.connect()
     try:
-        out = notify_new(db, data.read_settings(), reports_dir=REPORTS_DIR, days=a.days,
+        out = notify_new(db, load_user_config(), reports_dir=REPORTS_DIR, days=a.days,
                          dry_run=a.dry_run)
         if a.dry_run:
             print("\n(nothing sent: --dry-run)")

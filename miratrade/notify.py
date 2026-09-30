@@ -176,7 +176,7 @@ def notify_new(db=None, cfg: Config | None = None, reports_dir=None, days: int =
                ntfy_opener: Callable | None = None, email_sender: Callable | None = None) -> dict:
     """Announce the events nothing has been said about yet. Safe to run after every scan."""
     from miratrade import store
-    from miratrade.app.data import honesty_line
+    from miratrade.report import honesty_line
     from miratrade.scan import load_events
 
     cfg = cfg or Config()

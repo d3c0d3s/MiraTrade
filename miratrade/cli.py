@@ -290,10 +290,9 @@ def cmd_scan(a) -> None:
     written = store_scan(res)      # the shared database is what the screens filter on, and what
     print(f"  stored: {written['events']} events, {written['prices']} price bars")   # another app reads
     try:                           # a scan is what produces new events, so this is where they are
-        from miratrade.app import data as app_data          # announced; never twice for the same one
-        from miratrade.notify import notify_new
+        from miratrade.notify import notify_new          # announced; never twice for the same one
 
-        notify_new(cfg=app_data.read_settings(), reports_dir=Path("reports"), log=print)
+        notify_new(cfg=load_user_config(), reports_dir=Path("reports"), log=print)
     except Exception as e:         # a notification must never be the reason a scan looks failed
         print(f"  notify failed: {e}")
     print(f"\nEvidencia: {report or 'sin reporte con events.csv'} · perfil {variant_label(a.variant)}\n")

@@ -1,7 +1,27 @@
-"""Markdown edge report."""
+"""The edge report: how one is written, and how the finished ones are read back.
+
+Two halves of the same thing, in one place on purpose.
+
+`render` turns an analysis into `edge_report.md`. The second half — `list_reports`, `report_info`,
+`load_report`, `honesty_line` — reads the folders that were written, and it lives here in the core
+rather than in the desktop package because the notifier needs it too, and the notifier runs on a
+server with no Qt installed. It used to live in `miratrade/app/data.py`, which meant the core imported
+from a front-end; `tests/test_structure.py` now makes that impossible.
+
+Nothing here translates on its own. A `translate` callable comes in from whatever is showing the text
+— the interface's `t()`, or nothing at all for a console — which is the same arrangement the rest of
+the core uses (`miratrade.messages`).
+"""
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+
 import pandas as pd
+
+from miratrade.config import REPORTS_DIR
 
 
 def _fmt(v, pct=False):
@@ -264,3 +284,130 @@ def render(trades: pd.DataFrame, rules: pd.DataFrame, shown: pd.DataFrame, basel
                "often jumps before earnings and falls after; check the live chain (open interest, "
                "spread) before buying a suggested call.\n")
     return "\n".join(out)
+
+
+# --------------------------------------------------------------------------- reading them back
+
+_WINDOW = re.compile(r"Window: \*\*(\S+) → (\S+)\*\*")
+
+
+@dataclass
+class ReportInfo:
+    """One finished analysis on disk, summarised.
+
+    ``translate`` is carried on the row rather than passed to every call so that ``label`` and
+    ``summary`` stay properties: the screens use them in f-strings, and a method there reads badly
+    enough that somebody would eventually cache the string and let it go stale in the wrong language.
+    """
+    path: Path
+    name: str
+    modified: datetime
+    start: str | None
+    end: str | None
+    trades: int
+    validated: int
+    wf_confirmed: int
+    translate: object | None = field(default=None, compare=False, repr=False)
+
+    @property
+    def label(self) -> str:
+        from miratrade.messages import sayer
+
+        say = sayer(self.translate)
+        span = f"{self.start} → {self.end}" if self.start else say("no dates")
+        return f"{self.name}  ·  {span}"
+
+    @property
+    def summary(self) -> str:
+        from miratrade.messages import sayer
+
+        say = sayer(self.translate)
+        if self.validated == 0:
+            return say("{trades} trades · no validated rule", trades=self.trades)
+        return say("{trades} trades · {validated} validated rules · {confirmed} with walk-forward",
+                   trades=self.trades, validated=self.validated, confirmed=self.wf_confirmed)
+
+
+def _count_rows(path: Path) -> int:
+    if not path.exists():
+        return 0
+    with open(path, encoding="utf-8") as f:
+        return max(0, sum(1 for _ in f) - 1)
+
+
+def _csv(path: Path) -> pd.DataFrame:
+    try:
+        return pd.read_csv(path) if path.exists() and path.stat().st_size > 1 else pd.DataFrame()
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame()
+
+
+def report_info(path: Path, translate=None) -> ReportInfo | None:
+    md = Path(path) / "edge_report.md"
+    if not md.exists():
+        return None
+    path = Path(path)
+    m = _WINDOW.search(md.read_text(encoding="utf-8")[:2000])
+    validated = confirmed = 0
+    rules = path / "rules.csv"
+    if rules.exists() and rules.stat().st_size > 1:
+        try:
+            r = pd.read_csv(rules, usecols=lambda c: c in ("validated", "wf_confirmed"))
+            validated = int(r["validated"].sum()) if "validated" in r else 0
+            if "wf_confirmed" in r and "validated" in r:
+                confirmed = int((r["validated"] & r["wf_confirmed"]).sum())
+        except (pd.errors.EmptyDataError, ValueError):
+            pass
+    return ReportInfo(path, path.name, datetime.fromtimestamp(md.stat().st_mtime),
+                      m.group(1) if m else None, m.group(2) if m else None,
+                      _count_rows(path / "trades.csv"), validated, confirmed, translate)
+
+
+def list_reports(root: Path = REPORTS_DIR, translate=None) -> list[ReportInfo]:
+    """Every folder holding an ``edge_report.md`` (up to two levels deep), newest first."""
+    root = Path(root)
+    if not root.exists():
+        return []
+    folders = {p.parent for p in root.glob("edge_report.md")} \
+        | {p.parent for p in root.glob("*/edge_report.md")} \
+        | {p.parent for p in root.glob("*/*/edge_report.md")}
+    infos = [i for i in (report_info(f, translate) for f in folders) if i is not None]
+    return sorted(infos, key=lambda i: i.modified, reverse=True)
+
+
+def load_report(path: Path) -> dict:
+    path = Path(path)
+    rules = _csv(path / "rules.csv")
+    if "validated" in rules:
+        rules = rules[rules["validated"]]
+    return {"markdown": (path / "edge_report.md").read_text(encoding="utf-8"),
+            "rules": rules, "walk_forward": _csv(path / "walk_forward.csv"),
+            "candidates": _csv(path / "candidates.csv"), "trades": _csv(path / "trades.csv"),
+            "events": _csv(path / "events.csv"), "profiles": _csv(path / "profiles.csv")}
+
+
+def honesty_line(root: Path = REPORTS_DIR, translate=None) -> str:
+    """What the latest analysis actually found, in one sentence, shown beside every suggestion.
+
+    Read from the report rather than written into the code so it cannot go stale: today it says
+    nothing has been validated because nothing has, and the day a rule survives out of sample it will
+    say so by itself. A disclaimer that stops matching the evidence is worse than none, in both
+    directions — it either overstates what is known or hides it.
+    """
+    from miratrade.messages import sayer
+
+    say = sayer(translate)
+    reports = list_reports(root, translate)
+    if not reports:
+        return say("No analysis has been run yet, so nothing here has been tested against history.")
+    best = max(reports, key=lambda r: (r.wf_confirmed, r.validated))
+    if best.validated == 0:
+        return say("The latest analysis validated no rule out of sample: there is no measured edge "
+                   "here yet, only events and what similar ones did.")
+    # one rule is not "1 rules", and this line is read by someone deciding whether to risk money
+    rules = say("1 rule") if best.validated == 1 else say("{count} rules", count=best.validated)
+    if best.wf_confirmed == 0:
+        return say("The latest analysis validated {rules} out of sample, none confirmed by "
+                   "walk-forward.", rules=rules)
+    return say("The latest analysis validated {rules} out of sample, {confirmed} confirmed by "
+               "walk-forward.", rules=rules, confirmed=best.wf_confirmed)

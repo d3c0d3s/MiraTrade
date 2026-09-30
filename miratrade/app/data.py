@@ -1,125 +1,40 @@
-"""Everything the screens show, as plain functions (no Qt), so it can be tested directly."""
+"""Everything the screens show, as plain functions (no Qt), so it can be tested directly.
+
+Mostly thin: the work lives in the core (`miratrade.report`, `miratrade.prefs`) and this layer only
+hands it the interface's translator and the app's own paths. That way one function serves a screen,
+the console and the server, and the core never has to know which of the three is asking.
+"""
 from __future__ import annotations
 
 import json
-import re
-from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 
-import pandas as pd
-
+from miratrade import report
 from miratrade.app.i18n import t
 from miratrade.config import APP_DIR, REPORTS_DIR, Config, load_user_config
 
 SETTINGS_PATH = APP_DIR / "settings.json"
 SCAN_DIR = APP_DIR / "scan"
-_WINDOW = re.compile(r"Window: \*\*(\S+) → (\S+)\*\*")
 
 
-@dataclass
-class ReportInfo:
-    path: Path
-    name: str
-    modified: datetime
-    start: str | None
-    end: str | None
-    trades: int
-    validated: int
-    wf_confirmed: int
+# The reading of finished reports lives in `miratrade.report`, in the core, because the notifier
+# needs it too and the notifier runs on a server with no Qt. Here they are only given the interface's
+# translator, so a screen keeps calling one function with no language argument.
 
-    @property
-    def label(self) -> str:
-        span = f"{self.start} → {self.end}" if self.start else t("no dates")
-        return f"{self.name}  ·  {span}"
-
-    @property
-    def summary(self) -> str:
-        if self.validated == 0:
-            return t("{trades} trades · no validated rule", trades=self.trades)
-        return t("{trades} trades · {validated} validated rules · {confirmed} with walk-forward",
-                 trades=self.trades, validated=self.validated, confirmed=self.wf_confirmed)
+def report_info(path: Path) -> report.ReportInfo | None:
+    return report.report_info(path, translate=t)
 
 
-def _count_rows(path: Path) -> int:
-    if not path.exists():
-        return 0
-    with open(path, encoding="utf-8") as f:
-        return max(0, sum(1 for _ in f) - 1)
-
-
-def report_info(path: Path) -> ReportInfo | None:
-    md = path / "edge_report.md"
-    if not md.exists():
-        return None
-    m = _WINDOW.search(md.read_text(encoding="utf-8")[:2000])
-    validated = confirmed = 0
-    rules = path / "rules.csv"
-    if rules.exists() and rules.stat().st_size > 1:
-        try:
-            r = pd.read_csv(rules, usecols=lambda c: c in ("validated", "wf_confirmed"))
-            validated = int(r["validated"].sum()) if "validated" in r else 0
-            if "wf_confirmed" in r and "validated" in r:
-                confirmed = int((r["validated"] & r["wf_confirmed"]).sum())
-        except (pd.errors.EmptyDataError, ValueError):
-            pass
-    return ReportInfo(path, path.name, datetime.fromtimestamp(md.stat().st_mtime),
-                      m.group(1) if m else None, m.group(2) if m else None,
-                      _count_rows(path / "trades.csv"), validated, confirmed)
-
-
-def honesty_line(root: Path = REPORTS_DIR) -> str:
-    """What the latest analysis actually found, in one sentence, to be shown beside the suggestions.
-
-    It is read from the report rather than written into the code so it cannot go stale: today it says
-    nothing has been validated because nothing has, and the day a rule survives out of sample it will
-    say so by itself. A disclaimer that stops matching the evidence is worse than none, in both
-    directions — it either overstates what is known or hides it.
-    """
-    reports = list_reports(root)
-    if not reports:
-        return t("No analysis has been run yet, so nothing here has been tested against history.")
-    best = max(reports, key=lambda r: (r.wf_confirmed, r.validated))
-    if best.validated == 0:
-        return t("The latest analysis validated no rule out of sample: there is no measured edge "
-                 "here yet, only events and what similar ones did.")
-    # one rule is not "1 rules", and this line is read by someone deciding whether to risk money
-    rules = (t("1 rule") if best.validated == 1
-             else t("{count} rules", count=best.validated))
-    if best.wf_confirmed == 0:
-        return t("The latest analysis validated {rules} out of sample, none confirmed by "
-                 "walk-forward.", rules=rules)
-    return t("The latest analysis validated {rules} out of sample, {confirmed} confirmed by "
-             "walk-forward.", rules=rules, confirmed=best.wf_confirmed)
-
-
-def list_reports(root: Path = REPORTS_DIR) -> list[ReportInfo]:
-    """Every folder holding an ``edge_report.md`` (up to two levels deep), newest first."""
-    root = Path(root)
-    if not root.exists():
-        return []
-    folders = {p.parent for p in root.glob("edge_report.md")} | {p.parent for p in root.glob("*/edge_report.md")} \
-        | {p.parent for p in root.glob("*/*/edge_report.md")}
-    infos = [i for i in (report_info(f) for f in folders) if i is not None]
-    return sorted(infos, key=lambda i: i.modified, reverse=True)
-
-
-def _csv(path: Path) -> pd.DataFrame:
-    try:
-        return pd.read_csv(path) if path.exists() and path.stat().st_size > 1 else pd.DataFrame()
-    except pd.errors.EmptyDataError:
-        return pd.DataFrame()
+def list_reports(root: Path = REPORTS_DIR) -> list[report.ReportInfo]:
+    return report.list_reports(root, translate=t)
 
 
 def load_report(path: Path) -> dict:
-    path = Path(path)
-    rules = _csv(path / "rules.csv")
-    if "validated" in rules:
-        rules = rules[rules["validated"]]
-    return {"markdown": (path / "edge_report.md").read_text(encoding="utf-8"),
-            "rules": rules, "walk_forward": _csv(path / "walk_forward.csv"),
-            "candidates": _csv(path / "candidates.csv"), "trades": _csv(path / "trades.csv"),
-            "events": _csv(path / "events.csv"), "profiles": _csv(path / "profiles.csv")}
+    return report.load_report(path)
+
+
+def honesty_line(root: Path = REPORTS_DIR) -> str:
+    return report.honesty_line(root, translate=t)
 
 
 # --------------------------------------------------------------------------- settings
