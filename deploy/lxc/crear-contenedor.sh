@@ -5,21 +5,29 @@
 # uno que ya tiene datos dentro.
 set -euo pipefail
 
-CTID="${CTID:-210}"
+CTID="${CTID:-150210}"
 HOSTNAME="${HOSTNAME_CT:-miratrade}"
-# Disco: la base de datos son 358 MB hoy y crece con cada descarga; el venv ocupa ~900 MB. 20 GB
-# deja margen para un año largo sin tener que ampliar el volumen, que es la operación molesta.
-DISK_GB="${DISK_GB:-20}"
-MEMORY_MB="${MEMORY_MB:-3072}"      # el backtest carga el panel entero en memoria
+# Disco: la base son 375 MB hoy y crece con cada descarga; el venv ~900 MB, y FinBERT en ONNX añade
+# ~700 MB entre runtime y modelo. 50 GB deja margen de años sin ampliar el volumen, que es la
+# operación molesta.
+DISK_GB="${DISK_GB:-50}"
+MEMORY_MB="${MEMORY_MB:-10240}"     # el backtest carga el panel entero en memoria
 CORES="${CORES:-4}"
 BRIDGE="${BRIDGE:-vmbr0}"
 STORAGE="${STORAGE:-local-lvm}"
 TEMPLATE_STORE="${TEMPLATE_STORE:-local}"
 TEMPLATE="${TEMPLATE:-debian-12-standard_12.7-1_amd64.tar.zst}"
-# Sin IP fija por defecto: que la dé el DHCP y se le reserve en el UniFi, que es donde vive el
-# resto del direccionamiento. Poner IP aquí duplica esa decisión en dos sitios.
-NET="${NET:-name=eth0,bridge=${BRIDGE},ip=dhcp}"
+# IP fija, no DHCP: a este contenedor lo referencian el túnel desde el CT 150253 y una regla de
+# cortafuegos por origen. Las dos se rompen en silencio si la dirección cambia.
+IPV4="${IPV4:-192.168.150.210/24}"
+GATEWAY="${GATEWAY:-192.168.150.1}"
+NAMESERVER="${NAMESERVER:-192.168.150.101}"
+SEARCHDOMAIN="${SEARCHDOMAIN:-miratechcloud.com}"
+NET="${NET:-name=eth0,bridge=${BRIDGE},ip=${IPV4},gw=${GATEWAY}}"
 SSH_KEYS="${SSH_KEYS:-/root/.ssh/miratrade_authorized_keys}"
+# Quién puede abrir el 8787. Solo el contenedor del túnel: la API verifica el token de Access, y
+# esto es la segunda cerradura de la misma puerta, la que no depende de que el código acierte.
+TUNNEL_CT_IP="${TUNNEL_CT_IP:-192.168.150.253}"
 
 echo "== comprobaciones previas =="
 pveversion >/dev/null || { echo "esto no es un nodo Proxmox"; exit 1; }
@@ -42,14 +50,34 @@ pvesm list "$TEMPLATE_STORE" | grep -q "$TEMPLATE" || {
 echo "== creando $CTID ($HOSTNAME) =="
 pct create "$CTID" "${TEMPLATE_STORE}:vztmpl/${TEMPLATE}" \
   --hostname "$HOSTNAME" \
-  --cores "$CORES" --memory "$MEMORY_MB" --swap 1024 \
+  --cores "$CORES" --memory "$MEMORY_MB" --swap 2048 \
   --rootfs "${STORAGE}:${DISK_GB}" \
   --net0 "$NET" \
+  --nameserver "$NAMESERVER" --searchdomain "$SEARCHDOMAIN" \
   --features nesting=1 \
   --unprivileged 1 \
   --onboot 1 \
   --ssh-public-keys "$SSH_KEYS" \
   --description "MiraTrade: API y web. No envía órdenes. docs/ALCANCE.md"
+
+echo "== cortafuegos: solo el contenedor del túnel llega al 8787 =="
+# La API verifica el token de Cloudflare Access. Esto es la otra cerradura de la misma puerta: si
+# alguna vez el código fallara, un portátil cualquiera de la red seguiría sin poder abrirla.
+mkdir -p /etc/pve/firewall
+cat > "/etc/pve/firewall/${CTID}.fw" <<FW
+[OPTIONS]
+enable: 1
+policy_in: DROP
+policy_out: ACCEPT
+
+[RULES]
+IN ACCEPT -source ${TUNNEL_CT_IP} -p tcp -dport 8787 -log nolog
+IN ACCEPT -p tcp -dport 22 -log nolog
+IN ACCEPT -p icmp -log nolog
+FW
+echo "  escrito /etc/pve/firewall/${CTID}.fw (origen permitido: ${TUNNEL_CT_IP})"
+echo "  el cortafuegos del datacenter debe estar activo para que aplique:"
+echo "     pvesh get /cluster/firewall/options"
 
 pct start "$CTID"
 sleep 6

@@ -33,6 +33,7 @@ from miratrade.config import APP_DIR, Config, load_user_config
 #   risk, broker, data, ui, notify   the Settings screen
 #   insider, flow, smart             what counts as an event   (the Signals parameter form)
 #   trade, options, liquidity        what contract, and its exits
+#   sentiment                        FinBERT over the headlines (shown, not measured)
 USER_SECTIONS = ("risk", "broker", "data", "ui", "notify",
                  "insider", "flow", "smart", "trade", "options", "liquidity")
 JSON_PATH = APP_DIR / "settings.json"

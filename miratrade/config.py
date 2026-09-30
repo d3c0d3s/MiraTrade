@@ -229,6 +229,25 @@ class NotifyParams:
 
 
 @dataclass
+class SentimentParams:
+    """FinBERT over the headlines around an event.
+
+    Off by default, and that is the honest setting rather than a cautious one: no news signal in
+    this project has survived an out-of-sample test. The 8-K study found that almost every kind of
+    corporate news looks elevated before an insider buy until you control for the trading window,
+    and then it does not (docs/ALCANCE.md). So this shows what was published; it does not claim the
+    score predicts anything, and the screens say so.
+    """
+    enabled: bool = False
+    model: str = "ProsusAI/finbert"     # a BERT classifier, not a language model: three scores out
+    backend: str = "onnx"               # onnx (≈250 MB) or transformers (≈2.5 GB, same answer)
+    min_confidence: float = 0.65        # below this the verdict is "unclear", never a weak guess
+    window_days: int = 7                # how far back a headline counts towards an event
+    max_headlines: int = 20             # per event; a longer list stops being read
+    neutral_band: float = 0.15          # |score| under this reads as neutral rather than a lean
+
+
+@dataclass
 class UiParams:
     """How the app presents itself. English is the source language of every screen."""
     language: str = "en"
@@ -273,6 +292,7 @@ class Config:
     risk: RiskParams = field(default_factory=RiskParams)
     broker: BrokerParams = field(default_factory=BrokerParams)
     data: DataParams = field(default_factory=DataParams)
+    sentiment: SentimentParams = field(default_factory=SentimentParams)
     ui: UiParams = field(default_factory=UiParams)
 
 

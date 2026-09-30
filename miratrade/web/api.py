@@ -13,9 +13,12 @@ Three rules, and the first two are enforced by tests rather than by intention:
   Downloading happens when a person asks for it, as a job with a state you can look at
   (:mod:`miratrade.jobs`) — which is the honest form of that rule once the web has to replace the
   desktop app rather than accompany it.
-* **It does not authenticate, and says so.** It binds to localhost and Cloudflare Access sits in
-  front of it. Writing a half-authentication here would be worse than none, because somebody would
-  trust it.
+* **It verifies who Access says you are, and refuses to be reachable without it.** Cloudflare
+  Access decides identity against whatever provider sits behind it — Entra, AD FS, Authentik; this
+  neither knows nor cares — and signs that decision. :mod:`miratrade.web.access` verifies the
+  signature. It never invents a login of its own, which really would be worse than none, and the
+  server will not listen on anything but loopback unless Access is configured. A 375 MB database
+  served to a whole network because somebody typed a ``--host`` is the accident that prevents.
 
 Writes go through the core's own functions, so the validation that protects the desktop protects
 this: settings through :mod:`miratrade.prefs`, paper trades through :mod:`miratrade.practice`, jobs
@@ -36,6 +39,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from miratrade import attempts, card, freshness, i18n, jobs, params, prefs, scanner, store
+from miratrade.web import access
 from miratrade.config import CAP_TIERS, REPORTS_DIR
 from miratrade.scan import EVENT_KINDS, count_events, load_events, stored_days
 
@@ -119,17 +123,40 @@ class Listing(BaseModel):
 
 # --------------------------------------------------------------------------- the app
 
-def create_app(db_path: Path | None = None, reports_dir: Path | None = None) -> FastAPI:
-    """The API. ``db_path`` and ``reports_dir`` exist so a test can point it at a tmp store."""
+def create_app(db_path: Path | None = None, reports_dir: Path | None = None,
+               verifier=None) -> FastAPI:
+    """The API. ``db_path`` and ``reports_dir`` exist so a test can point it at a tmp store.
+
+    ``verifier`` is a :class:`miratrade.web.access.Verifier` when this deployment sits behind
+    Cloudflare Access. ``None`` means loopback only, which :func:`serve` enforces.
+    """
     reports_root = Path(reports_dir or REPORTS_DIR)
 
     app = FastAPI(
         title="MiraTrade",
         summary="Read the collected market data, the events and the finished analyses.",
-        description="This API never places an order and never downloads. It does not authenticate: "
-                    "bind it to localhost and put an authenticating proxy in front.",
+        description="This API never places an order, and no read ever fetches. Identity comes "
+                    "from Cloudflare Access and is verified here; without it the server listens "
+                    "on loopback only.",
         version="0.1.0",
     )
+
+    if verifier is not None:
+        @app.middleware("http")
+        async def only_through_access(request, call_next):
+            """Every path, including the page itself. A token on the API and none on the HTML
+            would hand the whole interface to anyone who asked for it."""
+            from fastapi.responses import JSONResponse
+
+            from miratrade.web.access import NotAllowed
+
+            try:
+                request.state.who = verifier.who(request.headers.get(access.HEADER, ""))
+            except NotAllowed as refusal:
+                # One refusal for every cause. Saying which check failed tells a caller how to get
+                # closer to passing it.
+                return JSONResponse({"detail": str(refusal)}, status_code=403)
+            return await call_next(request)
 
     def speaking(db):
         """The interface language, from the settings, so the API answers in it.
@@ -550,11 +577,26 @@ def create_app(db_path: Path | None = None, reports_dir: Path | None = None) -> 
 
 
 def serve(host: str = "127.0.0.1", port: int = 8787, db_path: Path | None = None,
-          reports_dir: Path | None = None, log: Callable[[str], None] = print) -> None:
-    """Run it. Localhost by default, on purpose: this API has no authentication of its own."""
+          reports_dir: Path | None = None, log: Callable[[str], None] = print,
+          settings=None) -> None:
+    """Run it, refusing to be reachable off this machine without Cloudflare Access.
+
+    That refusal is the point. A warning in a log does not prevent the accident — it scrolls past
+    at three in the morning and the thing keeps serving.
+    """
     import uvicorn
 
-    if host not in ("127.0.0.1", "localhost", "::1"):
-        log(f"  serving on {host}: this API does not authenticate. Put Cloudflare Access, or "
-            f"another authenticating proxy, in front of it.")
-    uvicorn.run(create_app(db_path, reports_dir), host=host, port=port, log_level="info")
+    settings = settings if settings is not None else access.Settings.from_env()
+    verifier = None
+    if access.required_for(host):
+        if not settings.configured:
+            raise SystemExit(
+                f"Refusing to listen on {host} without Cloudflare Access.\n"
+                f"  Set MIRATRADE_ACCESS_TEAM (your team name) and MIRATRADE_ACCESS_AUD (the\n"
+                f"  application's Audience tag), or use --host 127.0.0.1 and reach it through a\n"
+                f"  tunnel or an SSH forward.")
+        verifier = access.Verifier(settings)
+        log(f"  verifying Cloudflare Access tokens for team {settings.team!r}")
+    else:
+        log("  loopback only: reachable from this machine, and from nothing else")
+    uvicorn.run(create_app(db_path, reports_dir, verifier), host=host, port=port, log_level="info")
