@@ -260,11 +260,47 @@ async function loadReports() {
     $$("#report-list .item").forEach((o) => o.removeAttribute("aria-current"));
     b.setAttribute("aria-current", "true");
     const r = await api(`/api/reports/${encodeURIComponent(b.dataset.name)}`);
-    $("#report-body").innerHTML = `<div class="markdown">${
-      r.markdown.replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]))}</div>`;
+    $("#report-body").innerHTML = `<div class="markdown">${markdown(r.markdown)}</div>`;
   }));
   const first = $("#report-list .item");
   if (first) first.click();
+}
+
+/* A small Markdown renderer: headings, tables, bold and paragraphs, which is all an edge report
+   uses. Everything is escaped first — the report is generated here, but a renderer that trusts its
+   input is a habit that outlives the one file it was safe in. */
+const escapeHtml = (s) => s.replace(/[&<>"]/g,
+  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function markdown(text) {
+  const lines = escapeHtml(text || "").split("\n");
+  const out = [];
+  let table = null;
+  const flush = () => {
+    if (!table) return;
+    const [head, ...body] = table;
+    out.push(`<table><thead><tr>${head.map((c) => `<th>${c}</th>`).join("")}</tr></thead>`
+      + `<tbody>${body.map((r) => `<tr>${r.map((c) =>
+        `<td class="${/^[-+$\d(]/.test(c.trim()) ? "num" : ""}">${c}</td>`).join("")}</tr>`).join("")}`
+      + `</tbody></table>`);
+    table = null;
+  };
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line.startsWith("|")) {
+      const cells = line.slice(1, line.endsWith("|") ? -1 : undefined).split("|").map((c) => c.trim());
+      if (cells.every((c) => /^:?-{2,}:?$/.test(c))) continue;      // the ---|--- separator row
+      (table = table || []).push(cells);
+      continue;
+    }
+    flush();
+    const heading = line.match(/^(#{1,4})\s+(.*)$/);
+    if (heading) { out.push(`<h${heading[1].length + 1}>${heading[2]}</h${heading[1].length + 1}>`); continue; }
+    if (!line) continue;
+    out.push(`<p>${line.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")}</p>`);
+  }
+  flush();
+  return out.join("");
 }
 
 /* ── Práctica ──────────────────────────────────────────────────────────── */
@@ -274,11 +310,15 @@ async function loadPractice() {
   const s = p.summary;
   $("#practice-summary").textContent =
     `Cuenta ${money(p.equity)} · cerradas ${num(s.closed ?? 0)} · realizado ${money(s.realised ?? 0)}`
-    + ` · abierto ${money(s.unrealised ?? 0)}  —  ${p.note}`;
+    + ` · abierto ${money(s.unrealised ?? 0)}`;
 
-  const cols = ["ticker", "kind", "quantity", "entry", "stop", "target", "status", "result"];
+  /* The field names are what the journal stores; these are what a person reads. */
+  const COLS = [["ticker", "Ticker"], ["kind", "Tipo"], ["quantity", "Cantidad"],
+                ["entry", "Entrada"], ["stop", "Stop"], ["target", "Objetivo"],
+                ["status", "Estado"], ["result", "Resultado"]];
+  const cols = COLS.map(([k]) => k);
   $("#practice-table thead").innerHTML =
-    `<tr>${cols.map((c) => `<th>${c}</th>`).join("")}<th></th></tr>`;
+    `<tr>${COLS.map(([, label]) => `<th>${label}</th>`).join("")}<th></th></tr>`;
   $("#practice-table tbody").innerHTML = p.trades.length ? p.trades.map((t) => `
     <tr>${cols.map((c) => {
       const v = t[c];

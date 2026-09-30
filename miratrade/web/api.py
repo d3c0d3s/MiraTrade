@@ -291,13 +291,13 @@ def create_app(db_path: Path | None = None, reports_dir: Path | None = None) -> 
     # ------------------------------------------------------------------ the reports
 
     @app.get("/api/reports")
-    def reports() -> list[dict]:
+    def reports(db=Depends(reading)) -> list[dict]:
         from miratrade.report import list_reports
 
         return [{"name": r.name, "path": str(r.path), "start": r.start, "end": r.end,
                  "trades": r.trades, "validated": r.validated, "wf_confirmed": r.wf_confirmed,
                  "summary": r.summary, "modified": r.modified.isoformat()}
-                for r in list_reports(reports_root)]
+                for r in list_reports(reports_root, translate=speaking(db))]
 
     @app.get("/api/reports/{name}")
     def one_report(name: str) -> dict:
@@ -328,7 +328,7 @@ def create_app(db_path: Path | None = None, reports_dir: Path | None = None) -> 
             return [{"title": say(g.title), "note": say(g.note),
                      "fields": [{"section": f.section, "key": f.key, "label": say(f.label),
                                  "help": say(f.help), "kind": f.kind, "low": f.low, "high": f.high,
-                                 "step": f.step, "decimals": f.decimals, "suffix": f.suffix,
+                                 "step": f.step, "decimals": f.decimals, "suffix": say(f.suffix),
                                  "choices": [{"value": v, "label": say(lb)} for v, lb in f.choices],
                                  "value": _plain(getattr(getattr(cfg, f.section), f.key)),
                                  "default": _plain(f.default()),
@@ -504,9 +504,47 @@ def create_app(db_path: Path | None = None, reports_dir: Path | None = None) -> 
     # Mounted last, so every /api route wins and the page is what is left. It is plain HTML, CSS and
     # JavaScript with no build step: the thing it has to do is read this API and draw it, and a
     # toolchain to maintain would be a second thing that can break between you and your data.
+    class Fresh(StaticFiles):
+        """Served with no caching, on purpose.
+
+        These three files are a few kilobytes and they change whenever the app does. A browser
+        holding on to yesterday's JavaScript means somebody updates MiraTrade and keeps running the
+        old one — silently, with no symptom except behaviour that stopped matching the code. That
+        cost is far larger than re-sending 20 KB.
+        """
+
+        def is_not_modified(self, *args, **kwargs) -> bool:
+            return False
+
+        async def get_response(self, path, scope):
+            answer = await super().get_response(path, scope)
+            answer.headers["Cache-Control"] = "no-store, must-revalidate"
+            return answer
+
     static = Path(__file__).parent / "static"
+
+    @app.get("/", include_in_schema=False)
+    def page():
+        """The page, with its script and stylesheet stamped by their own modification time.
+
+        `no-store` fixes the future; it does nothing about a copy a browser cached before the
+        header existed, and that copy can outlive several updates with no symptom except behaviour
+        that stopped matching the code. A URL that changes when the file changes cannot be stale,
+        whatever any browser decided earlier.
+        """
+        from fastapi.responses import HTMLResponse
+
+        index = static / "index.html"
+        if not index.is_file():
+            raise HTTPException(404, "The web page is not installed.")
+        html = index.read_text(encoding="utf-8")
+        for name in ("app.css", "app.js"):
+            stamp = int((static / name).stat().st_mtime) if (static / name).is_file() else 0
+            html = html.replace(f'"{name}"', f'"{name}?v={stamp}"')
+        return HTMLResponse(html, headers={"Cache-Control": "no-store, must-revalidate"})
+
     if static.is_dir():
-        app.mount("/", StaticFiles(directory=static, html=True), name="web")
+        app.mount("/", Fresh(directory=static, html=True), name="web")
 
     return app
 

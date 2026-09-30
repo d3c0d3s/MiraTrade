@@ -5,6 +5,7 @@ and it never downloads. Both are absences, and an absence is exactly the kind of
 added back by accident six months later, so they are asserted rather than trusted.
 """
 from datetime import date
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -275,3 +276,32 @@ def test_a_page_says_how_many_there_really_were(client):
     how a list quietly hides three hundred rows."""
     body = client.get("/api/events", params={"days": 3650, "limit": 1}).json()
     assert body["shown"] == 1 and body["total"] == 2
+
+
+def test_the_page_is_never_cached(client):
+    """A browser holding yesterday's JavaScript means somebody updates MiraTrade and keeps running
+    the old one — silently, with no symptom except behaviour that stopped matching the code. These
+    files are a few kilobytes; that cost is far smaller."""
+    answer = client.get("/app.js")
+    assert answer.status_code == 200
+    assert "no-store" in answer.headers.get("cache-control", "")
+    assert "markdown" in answer.text        # and it really is the page's script
+
+
+def test_the_script_url_changes_when_the_script_does(client):
+    """`no-store` fixes the future and does nothing about a copy cached before the header existed
+    — which can outlive several updates with no symptom except behaviour that stopped matching the
+    code. A URL that changes with the file cannot be stale, whatever a browser decided earlier."""
+    import re
+
+    html = client.get("/").text
+    stamps = dict(re.findall(r'"(app\.(?:css|js))\?v=(\d+)"', html))
+    assert set(stamps) == {"app.css", "app.js"}
+    assert all(int(v) > 0 for v in stamps.values())
+
+    from miratrade.web import api as web_api
+
+    script = Path(web_api.__file__).parent / "static" / "app.js"
+    script.touch()
+    again = dict(re.findall(r'"(app\.js)\?v=(\d+)"', client.get("/").text))
+    assert again["app.js"] >= stamps["app.js"]

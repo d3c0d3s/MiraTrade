@@ -182,3 +182,12 @@ pre, .markdown { white-space: pre-wrap; font-family: var(--mono); font-size: 0.8
 @media (prefers-reduced-motion: no-preference) {
   .item, button { transition: border-color .12s ease, background .12s ease; }
 }
+
+/* A rendered report, not raw Markdown. Tables get the same treatment as everywhere else. */
+.markdown { white-space: normal; font-family: var(--font); font-size: 0.9rem; }
+.markdown h2 { font-size: 1.1rem; margin: 18px 0 6px; }
+.markdown h3 { font-size: 0.98rem; margin: 16px 0 4px; color: var(--text); }
+.markdown h4, .markdown h5 { font-size: 0.9rem; margin: 14px 0 4px; color: var(--text-2); }
+.markdown p { color: var(--body); }
+.markdown table { margin: 10px 0; display: block; overflow-x: auto; }
+.markdown strong { color: var(--text); }
