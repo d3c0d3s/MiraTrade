@@ -14,6 +14,9 @@ yf = ["yfinance>=0.2.40"]
 schwab = ["schwab-py>=1.5", "keyring>=25"]
 etrade = ["requests-oauthlib>=2.0", "keyring>=25"]
 app = ["PySide6>=6.7"]
+# The API and the web page. A separate extra because the desktop app must never need a server, and
+# the server must never need Qt — see docs/ESTRUCTURA.md.
+web = ["fastapi>=0.115", "uvicorn[standard]>=0.30"]
 # Congressional disclosures are PERSONAL USE ONLY (Ethics in Government Act, 5 U.S.C. app. § 105(c)):
 # they are an extra, not a dependency, because this is the one part that must come out before
 # MiraTrade is sold to anyone. See docs/DATA.md.
