@@ -325,6 +325,17 @@ def cmd_reprocess(a) -> None:
               f"{ev.get('what') or ''}")
 
 
+def cmd_serve(a) -> None:
+    """The API and the web page. Localhost by default: it has no authentication of its own."""
+    try:
+        from miratrade.web.api import serve
+    except ImportError as e:
+        raise SystemExit(f"The web extra is not installed: {e}\n"
+                         f"  pip install -e .[web]") from e
+    print(f"MiraTrade on http://{a.host}:{a.port}  (Ctrl+C to stop)")
+    serve(host=a.host, port=a.port)
+
+
 def cmd_demo(a) -> None:
     from miratrade.synthetic import make_market
 
@@ -407,6 +418,12 @@ def main(argv: list[str] | None = None) -> None:
                     help="show what these settings would find without touching the events table")
     rp.add_argument("--show", type=int, default=20, help="how many events to print")
     rp.set_defaults(func=cmd_reprocess)
+
+    sv = sub.add_parser("serve", help="the API and the web page (localhost; it does not "
+                                      "authenticate, put a proxy in front to expose it)")
+    sv.add_argument("--host", default="127.0.0.1")
+    sv.add_argument("--port", type=int, default=8787)
+    sv.set_defaults(func=cmd_serve)
 
     de = sub.add_parser("demo", help="run the full pipeline on synthetic data with a planted edge")
     de.add_argument("--out", default="reports/demo")

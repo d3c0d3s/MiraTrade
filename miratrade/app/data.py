@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 from miratrade import report
-from miratrade.app.i18n import t
+from miratrade.i18n import t
 from miratrade.config import APP_DIR, REPORTS_DIR, Config, load_user_config
 
 SETTINGS_PATH = APP_DIR / "settings.json"

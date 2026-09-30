@@ -9,7 +9,7 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, QRunnable,
 from PySide6.QtWidgets import QFrame, QHeaderView, QLabel, QTableView, QVBoxLayout, QWidget
 
 from miratrade.app import theme
-from miratrade.app.i18n import formats, t
+from miratrade.i18n import formats, t
 
 
 class DataFrameModel(QAbstractTableModel):

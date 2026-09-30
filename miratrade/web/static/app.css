@@ -1,0 +1,184 @@
+/* The approved visual system, as it is in miratrade/app/theme.py: dark, one meaning per colour,
+   and an event type is never told apart by colour alone — it carries a shape too. Mobile first,
+   because the reason this exists at all is not being in front of the computer. */
+
+:root {
+  --bg: #0B0E13;  --panel: #0F131A;  --panel-2: #12161D;
+  --border: #1E242E;  --border-2: #2A3240;
+  --text: #E6EAF2;  --text-2: #9AA4B2;  --body: #C4CCD8;
+  --accent: #6E9BFF;  --primary: #3562D1;
+  --up: #00D26A;  --down: #FF8A7A;
+  --insider: #F4B740;  --options: #B79CFF;  --ownership: #F472B6;
+  --selected: #141C2E;  --danger-bg: #3A1614;  --danger-border: #8C3A33;
+  --font: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', Consolas, ui-monospace, monospace;
+  --gap: 12px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.5 var(--font);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+h1 { font-size: 1.35rem; margin: 0 0 2px; letter-spacing: -0.01em; }
+h2 { font-size: 1rem; margin: 26px 0 4px; color: var(--text); }
+p { margin: 0 0 8px; }
+.muted { color: var(--text-2); }
+.small { font-size: 0.85rem; }
+
+/* ── header ─────────────────────────────────────────────────────────── */
+#top {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--gap);
+  padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border);
+}
+.brand { display: flex; align-items: baseline; gap: 8px; }
+.mark { color: var(--accent); font-size: 1.1rem; }
+.name { font-weight: 600; letter-spacing: 0.01em; }
+.state { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+
+.pill {
+  border: 1px solid var(--border-2); border-radius: 11px; padding: 2px 10px;
+  font-size: 0.78rem; color: var(--text-2); white-space: nowrap;
+}
+.pill.stale { border-color: var(--danger-border); color: var(--down); }
+.pill.job { border-color: var(--accent); color: var(--accent); }
+
+/* The honest note. It is read from the latest report, so it can say something different
+   tomorrow — and it is never hidden. */
+.honesty {
+  margin: 0; padding: 8px 16px; font-size: 0.85rem; color: var(--body);
+  background: var(--panel-2); border-bottom: 1px solid var(--border);
+}
+
+/* ── navigation: tabs on a phone ────────────────────────────────────
+   The header, the honest note and the tabs are ONE sticky block, not three elements each guessing
+   the height of the ones above it. A hardcoded `top: 49px` was wrong on the first screen it met
+   and it hid the note it was supposed to sit under. */
+.sticky-top { position: sticky; top: 0; z-index: 5; background: var(--bg); }
+#top { position: static; }
+#nav {
+  display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none;
+  padding: 0 8px; background: var(--bg); border-bottom: 1px solid var(--border);
+}
+#nav::-webkit-scrollbar { display: none; }
+#nav button {
+  flex: 0 0 auto; background: none; border: 0; border-bottom: 2px solid transparent;
+  color: var(--text-2); font: inherit; padding: 11px 13px; cursor: pointer;
+}
+#nav button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+#nav button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+main { padding: 16px; max-width: 1400px; margin: 0 auto; }
+
+.head {
+  display: flex; flex-wrap: wrap; gap: var(--gap);
+  align-items: flex-end; justify-content: space-between; margin-bottom: 14px;
+}
+.actions { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+
+/* ── controls ───────────────────────────────────────────────────────── */
+.field { display: flex; flex-direction: column; gap: 3px; font-size: 0.78rem; color: var(--text-2); }
+.field.grow { flex: 1 1 160px; }
+.field.compact { flex-direction: row; align-items: center; gap: 6px; }
+.field.compact input { width: 5.5em; }
+
+input, select, textarea {
+  background: var(--panel-2); color: var(--text); font: inherit;
+  border: 1px solid var(--border-2); border-radius: 7px; padding: 7px 9px; min-width: 0;
+}
+input:focus, select:focus { outline: none; border-color: var(--accent); }
+input[type="checkbox"] { accent-color: var(--accent); }
+.check { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--body); }
+
+button {
+  background: var(--panel-2); color: var(--text); font: inherit; cursor: pointer;
+  border: 1px solid var(--border-2); border-radius: 7px; padding: 8px 14px;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: 0.45; cursor: default; }
+button.primary { background: var(--primary); border-color: var(--primary); font-weight: 500; }
+button.ghost { background: none; }
+button.danger { border-color: var(--danger-border); color: var(--down); }
+
+.filters {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
+  padding: 12px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 9px; margin-bottom: var(--gap);
+}
+
+/* ── banners ────────────────────────────────────────────────────────── */
+.banner {
+  display: flex; gap: var(--gap); align-items: center; justify-content: space-between;
+  flex-wrap: wrap; padding: 10px 14px; margin-bottom: var(--gap);
+  background: var(--danger-bg); border: 1px solid var(--danger-border); border-radius: 9px;
+}
+.banner.steady { background: var(--panel); border-color: var(--border-2); }
+
+/* ── tables: they scroll sideways on a phone rather than squeezing ──── */
+.tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 9px; }
+table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+th, td { padding: 8px 11px; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--border); }
+th { background: var(--panel); color: var(--text-2); font-weight: 500; position: sticky; top: 0; }
+tbody tr:hover { background: var(--panel-2); }
+td.num { text-align: right; font-family: var(--mono); font-size: 0.82rem; }
+td.up { color: var(--up); } td.down { color: var(--down); }
+a { color: var(--accent); }
+
+/* ── two columns on a wide screen, stacked on a phone ───────────────── */
+.split { display: grid; gap: var(--gap); grid-template-columns: 1fr; }
+@media (min-width: 900px) { .split { grid-template-columns: 340px 1fr; align-items: start; } }
+
+.list { display: flex; flex-direction: column; gap: 8px; max-height: 62vh; overflow-y: auto; }
+.item {
+  text-align: left; padding: 10px 12px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 9px; cursor: pointer; width: 100%;
+}
+.item[aria-current="true"] { background: var(--selected); border-color: var(--accent); }
+.item .row { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.item .ticker { font-weight: 600; letter-spacing: 0.02em; }
+.item .when { font-size: 0.78rem; color: var(--text-2); font-family: var(--mono); }
+.item .what { font-size: 0.83rem; color: var(--body); margin-top: 3px; white-space: normal; }
+
+/* An event type carries a shape as well as a colour. Colour alone is not a distinction. */
+.kind { font-size: 0.74rem; margin-right: 6px; white-space: nowrap; }
+.kind.insider { color: var(--insider); }
+.kind.options { color: var(--options); }
+.kind.ownership { color: var(--ownership); }
+
+.card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 9px; padding: 16px;
+}
+.card h3 { margin: 0 0 2px; font-size: 1.15rem; }
+.card .block { padding: 12px 0; border-top: 1px solid var(--border); }
+.card .block:first-of-type { border-top: 0; }
+.card .label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-2); }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
+.stat .v { font-family: var(--mono); font-size: 1rem; }
+.warn { color: var(--down); }
+.ok { color: var(--up); }
+pre, .markdown { white-space: pre-wrap; font-family: var(--mono); font-size: 0.8rem; color: var(--body); }
+
+/* ── settings ───────────────────────────────────────────────────────── */
+.group { background: var(--panel); border: 1px solid var(--border); border-radius: 9px;
+         padding: 14px; margin-bottom: var(--gap); }
+.group > h3 { margin: 0 0 3px; font-size: 0.98rem; }
+.setting { padding: 11px 0; border-top: 1px solid var(--border); }
+.setting:first-of-type { border-top: 0; }
+.setting .top { display: flex; gap: var(--gap); align-items: center; justify-content: space-between;
+                flex-wrap: wrap; }
+.setting .help { font-size: 0.82rem; color: var(--text-2); margin-top: 4px; }
+.changed { font-size: 0.72rem; color: var(--accent); }
+
+#toast {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 20px; z-index: 20;
+  background: var(--panel-2); border: 1px solid var(--border-2); border-radius: 9px;
+  padding: 10px 16px; font-size: 0.88rem; max-width: 92vw;
+}
+#toast.bad { border-color: var(--danger-border); color: var(--down); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .item, button { transition: border-color .12s ease, background .12s ease; }
+}

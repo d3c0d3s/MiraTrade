@@ -1,7 +1,7 @@
 """Interface language: English is the source, other languages are lookups over it."""
 import pytest
 
-from miratrade.app.i18n import CATALOGS, DEFAULT, LANGUAGES, ES, language, missing, set_language, t
+from miratrade.i18n import CATALOGS, DEFAULT, LANGUAGES, ES, language, missing, set_language, t
 
 
 @pytest.fixture(autouse=True)

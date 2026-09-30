@@ -8,7 +8,7 @@ def _spanish_interface(request):
     if "test_app.py" not in str(request.node.fspath):
         yield
         return
-    from miratrade.app.i18n import language, set_language
+    from miratrade.i18n import language, set_language
 
     before = language()
     set_language("es")

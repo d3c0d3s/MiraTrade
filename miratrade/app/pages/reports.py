@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QLabel, QListWidget, QLis
                                QWidget)
 
 from miratrade.app import data, theme
-from miratrade.app.i18n import t
+from miratrade.i18n import t
 from miratrade.scan import variant_label
 from miratrade.app.charts import BarChart, EquityCurve, Histogram, event_type_bars, profile_bars, variants_in
 from miratrade.app.widgets import muted, table

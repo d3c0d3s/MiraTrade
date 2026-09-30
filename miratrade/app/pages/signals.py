@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (QComboBox, QFrame, QGridLayout, QHBoxLayout, QLab
                                QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QSpinBox, QVBoxLayout, QWidget)
 
 from miratrade.app import data, theme
-from miratrade.app.i18n import t
+from miratrade.i18n import t
 from miratrade.app.chart import CandleChart
 from miratrade.app.widgets import ShapeIcon, fmt_date, fmt_money, fmt_num, muted
 from miratrade.config import MIN_AUTO_REFRESH_MINUTES, Config

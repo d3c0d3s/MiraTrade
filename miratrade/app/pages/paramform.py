@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, 
 
 from miratrade import params, prefs
 from miratrade.app import theme
-from miratrade.app.i18n import t
+from miratrade.i18n import t
 from miratrade.app.widgets import muted
 
 

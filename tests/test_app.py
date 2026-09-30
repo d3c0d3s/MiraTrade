@@ -850,7 +850,7 @@ def test_the_honest_note_is_read_from_the_report_so_it_cannot_go_stale(tmp_path)
 
 def test_signals_and_practice_both_say_what_was_measured(window, tmp_path):
     """The note belongs wherever numbers are shown as if they meant something."""
-    from miratrade.app.i18n import t
+    from miratrade.i18n import t
     from miratrade.app.pages.signals import DISCLAIMER
 
     s = window.signals

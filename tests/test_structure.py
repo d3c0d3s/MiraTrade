@@ -57,10 +57,32 @@ def test_el_nucleo_no_conoce_qt():
     assert guilty == [], f"importan PySide6 fuera de miratrade/app: {guilty}"
 
 
+def _top_level_imports(tree: ast.AST) -> set[str]:
+    """Only the imports paid when the module is imported — not the ones inside a function."""
+    names = set()
+    for node in tree.body:                        # deliberately not ast.walk: module level only
+        if isinstance(node, ast.Import):
+            names.update(a.name for a in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            names.add(node.module)
+            names.update(f"{node.module}.{a.name}" for a in node.names)
+    return names
+
+
 def test_el_nucleo_no_importa_de_las_interfaces():
+    """Con una excepción, y es estrecha a propósito: `cli.py` es el lanzador.
+
+    Que quien arranca algo sepa qué arranca no es el acoplamiento que esta regla protege — lo que
+    protege es que la *lógica* no dependa de una interfaz. Pero solo vale si el import es perezoso,
+    dentro de la función: así `import miratrade.cli` no arrastra FastAPI ni Qt, y quien no tiene
+    instalado el extra `web` sigue pudiendo usar la línea de órdenes.
+    """
+    launchers = {"cli.py"}
     guilty = []
     for path, tree in _core_files():
-        for name in _imported(tree):
+        inside_only = path.name in launchers
+        names = _top_level_imports(tree) if inside_only else _imported(tree)
+        for name in names:
             head = name.split(".")
             if len(head) >= 2 and head[0] == "miratrade" and head[1] in INTERFACES:
                 guilty.append(f"{path.relative_to(ROOT)} → {name}")

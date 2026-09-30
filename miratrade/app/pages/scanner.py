@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog
 from miratrade import scanner
 from miratrade.app import data as app_data
 from miratrade.app import theme
-from miratrade.app.i18n import t
+from miratrade.i18n import t
 from miratrade.app.widgets import fit_columns, fmt_date, fmt_num, muted, table
 from miratrade.config import MIN_AUTO_REFRESH_MINUTES
 

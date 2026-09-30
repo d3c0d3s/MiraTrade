@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, 
                                QSpinBox, QTimeEdit, QVBoxLayout, QWidget)
 
 from miratrade.app import data
-from miratrade.app.i18n import LANGUAGES, t
+from miratrade.i18n import LANGUAGES, t
 from miratrade.config import MIN_AUTO_REFRESH_MINUTES
 from miratrade.app.widgets import card, muted
 

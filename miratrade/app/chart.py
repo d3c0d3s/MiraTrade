@@ -8,7 +8,7 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from miratrade.app import theme
-from miratrade.app.i18n import t
+from miratrade.i18n import t
 from miratrade.app.widgets import fmt_date, fmt_num
 
 AXIS_W = 64          # right-hand price axis

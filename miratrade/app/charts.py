@@ -14,7 +14,7 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from miratrade.app import theme
-from miratrade.app.i18n import t
+from miratrade.i18n import t
 from miratrade.scan import EVENT_LABELS
 from miratrade.app.widgets import fmt_date, fmt_num
 

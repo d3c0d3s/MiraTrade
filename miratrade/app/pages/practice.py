@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (QHBoxLayout, QHeaderView, QLabel, QMessageBox, QP
                                QTableWidgetItem, QVBoxLayout, QWidget)
 
 from miratrade.app import data, theme
-from miratrade.app.i18n import t
+from miratrade.i18n import t
 from miratrade.app.charts import EquityCurve
 from miratrade.app.widgets import card, fmt_date, fmt_num, muted
 from miratrade.practice import (CLOSED, DEFAULT_EQUITY, OPEN, REASONS, account_equity, load, mark, save,

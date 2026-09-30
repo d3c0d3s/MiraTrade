@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>MiraTrade</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<div class="sticky-top">
+<header id="top">
+  <div class="brand">
+    <span class="mark" aria-hidden="true">◤</span>
+    <span class="name">MiraTrade</span>
+  </div>
+  <div class="state">
+    <span id="fresh" class="pill" title="Cuánto retraso lleva la información guardada">—</span>
+    <span id="job" class="pill job" hidden></span>
+  </div>
+</header>
+
+<!-- Read from the latest report, never written in the code, so it cannot drift from the
+     evidence in either direction. There is no screen here where suggestions appear without it. -->
+<p id="honesty" class="honesty">…</p>
+
+<nav id="nav" role="tablist" aria-label="Pantallas">
+  <button role="tab" data-screen="scanner" aria-selected="true">Scanner</button>
+  <button role="tab" data-screen="signals">Señales</button>
+  <button role="tab" data-screen="reports">Reportes</button>
+  <button role="tab" data-screen="practice">Práctica</button>
+  <button role="tab" data-screen="settings">Ajustes</button>
+</nav>
+</div>
+
+<main>
+
+  <!-- ─────────────────────────────────────────────── Scanner: the only screen that downloads -->
+  <section id="scanner" class="screen" role="tabpanel">
+    <div class="head">
+      <div>
+        <h1>Scanner</h1>
+        <p class="muted">Todo lo recopilado, tal como se presentó. Aquí no se aplica ninguna estrategia.</p>
+      </div>
+      <div class="actions">
+        <label class="field compact">
+          <span>traer</span>
+          <input id="fetch-days" type="number" min="1" max="365" value="30" inputmode="numeric">
+          <span>días</span>
+        </label>
+        <button id="download" class="primary">Actualizar datos</button>
+      </div>
+    </div>
+
+    <p id="stored" class="muted small"></p>
+
+    <div class="filters">
+      <label class="field"><span>Fuente</span><select id="source"></select></label>
+      <label class="field"><span>Días</span>
+        <input id="f-days" type="number" min="0" max="3650" value="30" inputmode="numeric"></label>
+      <label class="field grow"><span>Ticker</span>
+        <input id="f-ticker" type="search" placeholder="PFE, AAPL" autocapitalize="characters"></label>
+      <label class="field grow"><span>Buscar</span>
+        <input id="f-text" type="search" placeholder="nombre, directivo, miembro"></label>
+      <label class="field"><span>Importe ≥</span>
+        <input id="f-amount" type="number" min="0" step="1000" value="0" inputmode="numeric"></label>
+      <label class="check"><input id="f-plan" type="checkbox">
+        <span title="Una compra pactada meses antes por un plan no es una decisión de hoy">Sin planes 10b5-1</span></label>
+      <label class="check"><input id="f-passive" type="checkbox">
+        <span title="Deja fuera los 13G que los fondos indexados presentan de forma mecánica">Solo participaciones activas</span></label>
+      <button id="clear-filters" class="ghost">Limpiar</button>
+    </div>
+
+    <div class="tablewrap"><table id="scanner-table"><thead></thead><tbody></tbody></table></div>
+    <p id="scanner-count" class="muted small"></p>
+  </section>
+
+  <!-- ─────────────────────────────────────────────── Señales -->
+  <section id="signals" class="screen" role="tabpanel" hidden>
+    <div class="head">
+      <div>
+        <h1>Señales</h1>
+        <p class="muted">Busca en la información ya guardada. No descarga: de eso se encarga el Scanner.</p>
+      </div>
+      <div class="actions">
+        <label class="field compact"><span>últimos</span>
+          <input id="ev-days" type="number" min="1" max="3650" value="30" inputmode="numeric">
+          <span>días</span></label>
+        <label class="field"><span>Tamaño</span><select id="ev-cap"></select></label>
+        <button id="search" class="primary">Buscar señales</button>
+      </div>
+    </div>
+
+    <div id="stale" class="banner" hidden>
+      <span id="stale-text"></span>
+      <button class="ghost" data-goto="scanner">Ir al Scanner</button>
+    </div>
+
+    <div class="split">
+      <div class="list" id="event-list" role="list"></div>
+      <div class="card" id="event-card"><p class="muted">Elige un evento.</p></div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────── Reportes -->
+  <section id="reports" class="screen" role="tabpanel" hidden>
+    <div class="head">
+      <div>
+        <h1>Reportes</h1>
+        <p class="muted">Simula lo guardado y busca reglas que aguanten fuera de muestra. No descarga nada.</p>
+      </div>
+      <div class="actions">
+        <label class="field compact"><span>últimos</span>
+          <input id="an-days" type="number" min="30" max="3650" value="365" inputmode="numeric">
+          <span>días</span></label>
+        <button id="analyse" class="primary">Ejecutar análisis</button>
+      </div>
+    </div>
+    <div class="split">
+      <div class="list" id="report-list" role="list"></div>
+      <div class="card" id="report-body"><p class="muted">Elige un reporte.</p></div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────── Práctica -->
+  <section id="practice" class="screen" role="tabpanel" hidden>
+    <div class="head">
+      <div>
+        <h1>Práctica</h1>
+        <p class="muted">Sin dinero real. Una call se valora a partir de la acción, no de una cotización.</p>
+      </div>
+    </div>
+    <p id="practice-summary" class="muted"></p>
+    <div class="tablewrap"><table id="practice-table"><thead></thead><tbody></tbody></table></div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────── Ajustes -->
+  <section id="settings" class="screen" role="tabpanel" hidden>
+    <div class="head"><div><h1>Ajustes</h1></div></div>
+
+    <div class="banner steady" id="attempts-box">
+      <span id="attempts">—</span>
+    </div>
+
+    <h2>Condiciones</h2>
+    <p class="muted small">Qué cuenta como evento y qué contrato compra un perfil. Cambiarlas y
+      volver a buscar es otra prueba, y la cuenta de arriba lo refleja.</p>
+    <div id="settings-rules"></div>
+
+    <h2>Funcionamiento</h2>
+    <p class="muted small">Cómo trabaja la aplicación. Nada de esto es una afirmación sobre el mercado.</p>
+    <div id="settings-operation"></div>
+
+    <p class="muted small">Los ajustes del bróker, incluido el envío de órdenes reales, se quedan en
+      la máquina donde están las credenciales. Desde aquí no se tocan.</p>
+  </section>
+
+</main>
+
+<div id="toast" role="status" aria-live="polite" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

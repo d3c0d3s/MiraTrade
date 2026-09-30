@@ -32,9 +32,10 @@ from typing import Any, Callable
 
 import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from miratrade import attempts, card, freshness, jobs, params, prefs, scanner, store
+from miratrade import attempts, card, freshness, i18n, jobs, params, prefs, scanner, store
 from miratrade.config import CAP_TIERS, REPORTS_DIR
 from miratrade.scan import EVENT_KINDS, count_events, load_events, stored_days
 
@@ -130,6 +131,21 @@ def create_app(db_path: Path | None = None, reports_dir: Path | None = None) -> 
         version="0.1.0",
     )
 
+    def speaking(db):
+        """The interface language, from the settings, so the API answers in it.
+
+        The catalogue lives in the core now (`miratrade/i18n.py`) rather than in the desktop
+        package. It moved the moment the web became a replacement rather than a companion: the web
+        cannot import from `app/`, and a second copy of the Spanish would have drifted from the
+        first inside a week.
+        """
+        try:
+            cfg, _ = prefs.read(db)
+            i18n.set_language(cfg.ui.language)
+        except Exception:
+            pass
+        return i18n.t
+
     def reading():
         """A read-only connection per request, closed afterwards.
 
@@ -157,14 +173,15 @@ def create_app(db_path: Path | None = None, reports_dir: Path | None = None) -> 
 
     @app.get("/api/health", response_model=Health)
     def health(db=Depends(reading)) -> Health:
+        say = speaking(db)
         state = freshness.check(db)
         return Health(schema_version=store.version(db), counts=store.counts(db),
-                      fresh=state.say(), stale=state.stale, behind=state.behind,
+                      fresh=state.say(say), stale=state.stale, behind=state.behind,
                       last_download=state.last.isoformat() if state.last else None,
                       events=state.rows, days_stored=stored_days(db))
 
     @app.get("/api/honesty")
-    def honesty() -> dict:
+    def honesty(db=Depends(reading)) -> dict:
         """The one sentence that goes beside every suggestion, read from the latest report.
 
         Served as its own endpoint so a front-end cannot forget it: there is no screen in this
@@ -172,26 +189,31 @@ def create_app(db_path: Path | None = None, reports_dir: Path | None = None) -> 
         """
         from miratrade.report import honesty_line
 
-        return {"line": honesty_line(reports_root)}
+        return {"line": honesty_line(reports_root, translate=speaking(db))}
 
     # ------------------------------------------------------------------ the Scanner
 
     @app.get("/api/sources")
-    def sources() -> list[dict]:
+    def sources(db=Depends(reading)) -> list[dict]:
         """The six things that were collected, with how much of each and the days they cover."""
+        say = speaking(db)
         out = []
         for source in scanner.SOURCES:
-            out.append({"key": source.key, "label": source.label,
+            out.append({"key": source.key, "label": say(source.label),
                         "filters": list(source.filters),
                         # `label` is the column's name in the frame the Scanner returns, and its
                         # heading. `sql` stays here: it is how the row is produced, not what a
                         # front-end should know or be able to influence.
-                        "columns": [{"label": c.label, "kind": c.kind} for c in source.columns]})
+                        # `name` is the column in the frame; `label` is what a person reads.
+                        # They were the same string until this API had to answer in Spanish.
+                        "columns": [{"name": c.label, "label": say(c.label), "kind": c.kind}
+                                    for c in source.columns]})
         return out
 
     @app.get("/api/summary")
     def summary(db=Depends(reading)) -> list[dict]:
-        return [{"label": label, "rows": n, "first": a, "last": b}
+        say = speaking(db)
+        return [{"label": say(label), "rows": n, "first": a, "last": b}
                 for label, n, a, b in scanner.summary(db)]
 
     @app.get("/api/scanner/{source}", response_model=Listing)
@@ -246,6 +268,12 @@ def create_app(db_path: Path | None = None, reports_dir: Path | None = None) -> 
             raise HTTPException(400, f"Unknown kinds {kinds!r}: {', '.join(EVENT_KINDS)}")
         found = load_events(db, days=days, cap_tier=cap_tier, kinds=wanted or None,
                             ticker=ticker, limit=limit)
+        # The stored `what` is English. It was written alongside `what_parts` — the template and
+        # its values — precisely so a sentence saved months ago can still be read in another
+        # language today, and the list is where most people read it.
+        if len(found):
+            say = speaking(db)
+            found = found.assign(what=[card.what_of(r, say) for r in found.to_dict("records")])
         # counted separately, before the limit: a caller has to be able to tell "50 of 444" from
         # "50 of 50", and returning the page size as the total makes those look identical.
         total = count_events(db, days=days, cap_tier=cap_tier, kinds=wanted or None, ticker=ticker)
@@ -294,13 +322,14 @@ def create_app(db_path: Path | None = None, reports_dir: Path | None = None) -> 
         """
         cfg, unknown = prefs.read(db)
         touched = prefs.changed(db)
+        say = speaking(db)
 
         def describe(groups):
-            return [{"title": g.title, "note": g.note,
-                     "fields": [{"section": f.section, "key": f.key, "label": f.label,
-                                 "help": f.help, "kind": f.kind, "low": f.low, "high": f.high,
+            return [{"title": say(g.title), "note": say(g.note),
+                     "fields": [{"section": f.section, "key": f.key, "label": say(f.label),
+                                 "help": say(f.help), "kind": f.kind, "low": f.low, "high": f.high,
                                  "step": f.step, "decimals": f.decimals, "suffix": f.suffix,
-                                 "choices": [{"value": v, "label": lb} for v, lb in f.choices],
+                                 "choices": [{"value": v, "label": say(lb)} for v, lb in f.choices],
                                  "value": _plain(getattr(getattr(cfg, f.section), f.key)),
                                  "default": _plain(f.default()),
                                  "changed": (f.section, f.key) in touched}
@@ -313,7 +342,7 @@ def create_app(db_path: Path | None = None, reports_dir: Path | None = None) -> 
                 "operation": describe(params.OPERATION_GROUPS),
                 "ignored": unknown,
                 "attempts": attempts.count(db, "search"),
-                "multiple_testing": attempts.say(attempts.count(db, "search"))}
+                "multiple_testing": attempts.say(attempts.count(db, "search"), say)}
 
     @app.put("/api/settings")
     def write_setting(change: Setting, db=Depends(writing)) -> dict:
@@ -395,8 +424,10 @@ def create_app(db_path: Path | None = None, reports_dir: Path | None = None) -> 
         event = found.iloc[0].to_dict() if len(found) else {"ticker": ticker}
         bars = store.prices(db, [ticker]).get(ticker)
         history, rules = latest_report_frames(reports_root)
+        say = speaking(db)
         return card.build(event, bars, db=db, cfg=cfg, variant=variant, history=history,
-                          rules=rules, honesty=honesty_line(reports_root))
+                          rules=rules, honesty=honesty_line(reports_root, translate=say),
+                          translate=say)
 
     @app.get("/api/practice")
     def practice(db=Depends(reading)) -> dict:
@@ -467,6 +498,15 @@ def create_app(db_path: Path | None = None, reports_dir: Path | None = None) -> 
         if not built.signal_date:
             raise HTTPException(404, f"No stored event for {ticker.upper()}.")
         return built.as_dict()
+
+    # ------------------------------------------------------------------ the page itself
+
+    # Mounted last, so every /api route wins and the page is what is left. It is plain HTML, CSS and
+    # JavaScript with no build step: the thing it has to do is read this API and draw it, and a
+    # toolchain to maintain would be a second thing that can break between you and your data.
+    static = Path(__file__).parent / "static"
+    if static.is_dir():
+        app.mount("/", StaticFiles(directory=static, html=True), name="web")
 
     return app
 

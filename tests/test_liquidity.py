@@ -128,13 +128,13 @@ def test_the_shares_own_volume_is_the_fallback_and_says_it_is_weaker():
 
 
 def test_the_reason_is_translatable_like_the_rest_of_the_domain():
-    from miratrade.app.i18n import set_language, t
+    from miratrade.i18n import set_language, t
 
     v = check_contract(target_pct=0.40)
     english = v.say()
     before = None
     try:
-        from miratrade.app.i18n import language
+        from miratrade.i18n import language
 
         before = language()
         set_language("es")

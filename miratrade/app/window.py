@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (QButtonGroup, QHBoxLayout, QLabel, QMainWindow, Q
 
 from miratrade import __version__
 from miratrade.app import data
-from miratrade.app.i18n import t
+from miratrade.i18n import t
 from miratrade.app.brand import app_icon, nav_brand
 from miratrade.app.pages.practice import PracticePage
 from miratrade.app.pages.signals import SignalsPage
