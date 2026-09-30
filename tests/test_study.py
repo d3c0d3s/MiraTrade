@@ -170,3 +170,40 @@ def test_surviving_only_the_whole_window_is_reported_as_the_weaker_claim(db):
     empty = pd.DataFrame([{"item": "3.02", "survives": False}])
     said = study.verdict({"sample": None, "all": whole, "discovery": empty, "confirmation": empty})
     assert "Nothing survives in both halves" in said and "weaker claim" in said
+
+
+def test_placebos_are_matched_to_the_same_point_in_the_quarter(db):
+    """The control that decided the whole study. Insiders may only buy in the window that opens
+    after results, so events pile up a few weeks after a 2.02 by construction — and everything else
+    filed in those weeks comes along for free. Matching on it took results announcements from 52 %
+    against 29 % to 63.7 % against 63.8 %: no difference at all."""
+    # Quarterly results going back well before the first event, so that a placebo day also has a
+    # last announcement to be measured from. Without that history its phase is unknown, and an
+    # unknown is dropped rather than guessed — which the next test is about.
+    for q in range(10):
+        _filing(db, "AAA", (date(2025, 1, 15) + timedelta(days=q * 91)).isoformat(), "2.02",
+                accession=f"q{q}")
+    for i in range(6):
+        _event(db, "AAA", (date(2026, 3, 1) + timedelta(days=i * 30)).isoformat())
+
+    matched = study.match_on_cycle(db, study.build_sample(db))
+    assert len(matched.events) and len(matched.placebos)
+    for _, event in matched.events.iterrows():
+        near = matched.placebos[matched.placebos["ticker"] == event["ticker"]]
+        assert ((near["since"] - event["since"]).abs() <= study.SAME_PHASE_DAYS).any()
+
+
+def test_a_day_with_no_known_results_announcement_is_dropped_not_guessed(db):
+    """No 2.02 on file means the quarter's clock is unknown, and an unknown is not a zero."""
+    _event(db, "AAA", "2026-09-10")
+    _filing(db, "AAA", "2026-09-05", "5.02")          # no 2.02 anywhere
+    assert study.days_since_earnings(db, study.build_sample(db).events).isna().all()
+    assert study.match_on_cycle(db, study.build_sample(db)).events.empty
+
+
+def test_the_report_keeps_the_uncontrolled_numbers_too(db):
+    """Both are shown on purpose: the difference between them IS the finding."""
+    _event(db, "AAA", "2026-09-10")
+    _filing(db, "AAA", "2026-09-05", "2.02")
+    out = study.report(db)
+    assert {"all", "without_control", "unmatched", "discovery", "confirmation"} <= set(out)

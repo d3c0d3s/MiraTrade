@@ -168,15 +168,78 @@ def split(sample: Sample, train_fraction: float = 0.6) -> tuple[Sample, Sample]:
     return early, late
 
 
+EARNINGS_ITEM = "2.02"
+SAME_PHASE_DAYS = 7           # how close in the quarter a placebo has to be to count as matched
+PLACEBOS_PER_EVENT = 3
+
+
+def days_since_earnings(db, days: pd.DataFrame) -> pd.Series:
+    """For each row, days since that company's last results announcement (8-K item 2.02).
+
+    This is the quarter's clock, and it turned out to be the whole study. Insiders may only buy in
+    the window that opens after results and closes before the next quarter ends, so events pile up
+    a few weeks after a 2.02 **by construction** — and everything else the company filed in those
+    same weeks is dragged along with them.
+    """
+    from miratrade import store
+
+    table = store.read(db, "filings", "item = ?", (EARNINGS_ITEM,))
+    table["filing_date"] = pd.to_datetime(table["filing_date"])
+    by_ticker = {t: g["filing_date"] for t, g in table.groupby("ticker")}
+    out = []
+    for ticker, day in zip(days["ticker"], days["signal_date"]):
+        dates = by_ticker.get(ticker)
+        past = dates[dates <= day] if dates is not None else None
+        out.append((day - past.max()).days if past is not None and len(past) else np.nan)
+    return pd.Series(out, index=days.index, dtype="float64")
+
+
+def match_on_cycle(db, sample: Sample, within: int = SAME_PHASE_DAYS,
+                   per_event: int = PLACEBOS_PER_EVENT, seed: int = 11) -> Sample:
+    """Keep only placebos at the same point in the company's quarter as the event they answer.
+
+    Without this the study finds that almost every kind of corporate news is more common before an
+    insider buy — and when *everything* is elevated, the answer is one confound rather than many
+    findings. Here it was the trading window: matching on it took results announcements from 52 %
+    against 29 % to 63.7 % against 63.8 %, which is no difference at all.
+    """
+    events = sample.events.assign(since=days_since_earnings(db, sample.events)).dropna(subset=["since"])
+    placebos = sample.placebos.assign(since=days_since_earnings(db, sample.placebos)).dropna(subset=["since"])
+    if events.empty or placebos.empty:
+        return Sample(events.reset_index(drop=True), placebos.reset_index(drop=True))
+
+    rng = np.random.default_rng(seed)
+    pool = {t: g for t, g in placebos.groupby("ticker")}
+    chosen, kept = [], []
+    for _, row in events.iterrows():
+        candidates = pool.get(row["ticker"])
+        if candidates is None:
+            continue
+        near = candidates[(candidates["since"] - row["since"]).abs() <= within]
+        if not len(near):
+            continue
+        picked = rng.choice(len(near), size=min(per_event, len(near)), replace=False)
+        chosen.append(near.iloc[picked])
+        kept.append(row)
+    if not kept:
+        return Sample(events.iloc[0:0], placebos.iloc[0:0])
+    out = Sample(pd.DataFrame(kept).reset_index(drop=True),
+                 pd.concat(chosen, ignore_index=True))
+    out.measurable, out.total = len(out.events), sample.total
+    return out
+
+
 def report(db, before: int = WINDOW_DAYS, alpha: float = 0.05,
            train_fraction: float = 0.6) -> dict:
     """The whole study: the full window, then the same test in each half of it."""
-    sample = build_sample(db)
+    raw = build_sample(db)
+    sample = match_on_cycle(db, raw)          # the control that decides the whole thing
     early, late = split(sample, train_fraction)
-    return {"sample": sample,
+    return {"sample": sample, "unmatched": raw,
             "all": compare(db, sample, before, alpha=alpha),
             "discovery": compare(db, early, before, alpha=alpha),
-            "confirmation": compare(db, late, before, alpha=alpha)}
+            "confirmation": compare(db, late, before, alpha=alpha),
+            "without_control": compare(db, raw, before, alpha=alpha)}
 
 
 def survivors(table: pd.DataFrame) -> set[str]:
