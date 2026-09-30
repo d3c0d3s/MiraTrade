@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field
 
 from miratrade import attempts, freshness, params, prefs, scanner, store
 from miratrade.config import CAP_TIERS, REPORTS_DIR
-from miratrade.scan import EVENT_KINDS, load_events, stored_days
+from miratrade.scan import EVENT_KINDS, count_events, load_events, stored_days
 
 MAX_ROWS = 2000
 
@@ -224,7 +224,10 @@ def create_app(db_path: Path | None = None, reports_dir: Path | None = None) -> 
             raise HTTPException(400, f"Unknown kinds {kinds!r}: {', '.join(EVENT_KINDS)}")
         found = load_events(db, days=days, cap_tier=cap_tier, kinds=wanted or None,
                             ticker=ticker, limit=limit)
-        return Listing(rows=rows(found), total=len(found), shown=len(found))
+        # counted separately, before the limit: a caller has to be able to tell "50 of 444" from
+        # "50 of 50", and returning the page size as the total makes those look identical.
+        total = count_events(db, days=days, cap_tier=cap_tier, kinds=wanted or None, ticker=ticker)
+        return Listing(rows=rows(found), total=total, shown=len(found))
 
     @app.get("/api/prices/{ticker}")
     def prices(ticker: str, start: date | None = None, end: date | None = None,

@@ -248,3 +248,10 @@ def test_no_database_is_explained_rather_than_crashing(tmp_path):
     client = TestClient(create_app(tmp_path / "nowhere" / "market.db", tmp_path / "reports"))
     answer = client.get("/api/health")
     assert answer.status_code == 503 and "market database" in answer.json()["detail"]
+
+
+def test_a_page_says_how_many_there_really_were(client):
+    """"50 of 444" and "50 of 50" must not look the same. Returning the page size as the total is
+    how a list quietly hides three hundred rows."""
+    body = client.get("/api/events", params={"days": 3650, "limit": 1}).json()
+    assert body["shown"] == 1 and body["total"] == 2

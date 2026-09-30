@@ -503,16 +503,15 @@ def store_scan(result: dict, db=None) -> dict:
             db.close()
 
 
-def load_events(db, days: int | None = None, cap_tier: str = "all",
-                kinds: tuple[str, ...] | None = None, end: date | None = None,
-                ticker: str = "", limit: int = 5000) -> pd.DataFrame:
-    """Events from the store, narrowed in SQL rather than in memory.
+def events_where(db, days: int | None = None, cap_tier: str = "all",
+                 kinds: tuple[str, ...] | None = None, end: date | None = None,
+                 ticker: str = "") -> tuple[str, list] | None:
+    """The SQL that narrows the events table, as ``(where, params)``; ``None`` when nothing can match.
 
-    The window, the company size, the kind of event and the ticker are all views over what was
-    downloaded — never a reason to download again — and doing that narrowing in the database is what
-    keeps changing a dropdown instant with tens of thousands of events stored.
+    Built in one place because two callers need the *same* narrowing: the one that reads a page of
+    events and the one that counts how many there were. Two copies of this drift, and the way you
+    find out is a screen saying "12 of 12" over a list that is really the first 12 of four hundred.
     """
-    from miratrade import store
     from miratrade.config import CAP_TIERS
 
     where, params = [], []
@@ -535,15 +534,46 @@ def load_events(db, days: int | None = None, cap_tier: str = "all",
         if columns:
             where.append("(" + " OR ".join(f"{c} = 1" for c in columns) + ")")
         else:
-            return empty_events()
+            return None                              # asked for kinds that do not exist
     if ticker.strip():
         wanted = [x.strip().upper() for x in ticker.replace(";", ",").split(",") if x.strip()]
         if wanted:
             where.append(f"upper(ticker) IN ({','.join('?' * len(wanted))})")
             params += wanted
-    rows = store.read(db, "events", " AND ".join(where), params,
+    return " AND ".join(where), params
+
+
+def load_events(db, days: int | None = None, cap_tier: str = "all",
+                kinds: tuple[str, ...] | None = None, end: date | None = None,
+                ticker: str = "", limit: int = 5000) -> pd.DataFrame:
+    """Events from the store, narrowed in SQL rather than in memory.
+
+    The window, the company size, the kind of event and the ticker are all views over what was
+    downloaded — never a reason to download again — and doing that narrowing in the database is what
+    keeps changing a dropdown instant with tens of thousands of events stored.
+    """
+    from miratrade import store
+
+    narrowed = events_where(db, days, cap_tier, kinds, end, ticker)
+    if narrowed is None:
+        return empty_events()
+    where, params = narrowed
+    rows = store.read(db, "events", where, params,
                       order=f"signal_date DESC, ticker LIMIT {int(limit)}")
     return rows_to_events(rows)
+
+
+def count_events(db, days: int | None = None, cap_tier: str = "all",
+                 kinds: tuple[str, ...] | None = None, end: date | None = None,
+                 ticker: str = "") -> int:
+    """How many events match, before any limit — so a caller can say "50 of 444" honestly."""
+    narrowed = events_where(db, days, cap_tier, kinds, end, ticker)
+    if narrowed is None:
+        return 0
+    where, params = narrowed
+    sql = "SELECT count(*) AS n FROM events" + (f" WHERE {where}" if where else "")
+    row = db.execute(sql, params).fetchone()
+    return int(row["n"]) if row else 0
 
 
 def _last_event_day(db):
