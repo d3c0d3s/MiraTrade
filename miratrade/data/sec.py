@@ -302,6 +302,11 @@ def parse_form4_xml(xml: str, accession: str = "", filing_date: str | None = Non
 
 def _finish(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
+    # The two parsers have to agree on a missing ticker. The Form 4 XML gives "" for an absent
+    # issuerTradingSymbol; the quarterly TSV gives NaN, which is NULL, which the schema refuses —
+    # so a whole quarter of history died on the 0.14% of rows that are non-traded REITs with no
+    # trading symbol at all. One shape, decided here, and `clean_insiders` drops them on read.
+    df["ticker"] = df["ticker"].fillna("").astype(str).str.upper().str.strip()
     df["value"] = df["shares"] * df["price"]
     prior = df["owned_after"] - df["shares"]
     df["delta_own_pct"] = (df["shares"] / prior.where(prior > 0)).fillna(1.0)  # new position = +100%
@@ -467,7 +472,10 @@ def primary_ticker(tickers: pd.Series) -> pd.Series:
 
 
 # Placeholder tickers filers type when the issuer has none.
-_NO_TICKER = {"NONE", "NA", "N", "NAN", "NULL", "TBD"}
+# "" belongs here as much as "NONE" does: a transaction with no trading symbol at all — a
+# non-traded REIT, a private issuer — cannot be attributed to a security, so nothing downstream can
+# do anything with it except count it.
+_NO_TICKER = {"", "NONE", "NA", "N", "NAN", "NULL", "TBD"}
 
 
 def clean_insiders(insiders: pd.DataFrame, max_price: float = 10_000,

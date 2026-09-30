@@ -356,3 +356,28 @@ def test_the_ticker_filter_still_rejects_what_is_not_a_stock():
     ok = kept.str.fullmatch(r"[A-Z.]{1,6}", na=False)
     assert list(kept[ok]) == ["LEN", "N"]          # the long symbol and the digits still go
     assert not ok.iloc[1] and not ok.iloc[2]
+
+
+def test_both_form4_parsers_agree_on_a_missing_ticker():
+    """A whole quarter of history died on this. The Form 4 XML gives "" for an absent
+    issuerTradingSymbol and the quarterly TSV gives NaN, which is NULL, which the schema refuses —
+    so the bulk path crashed on the 0.14% of rows that are non-traded REITs with no symbol."""
+    import pandas as pd
+
+    from miratrade.data.sec import INSIDER_COLUMNS, _finish, clean_insiders
+
+    raw = pd.DataFrame({
+        "accession": ["a", "b"], "filing_date": ["2026-09-01", "2026-09-01"],
+        "trade_date": ["2026-08-30", "2026-08-30"],
+        "ticker": [None, " pfe "], "issuer": ["A REIT", "PFIZER"], "issuer_cik": ["1", "2"],
+        "owner": ["X", "Y"], "owner_cik": ["9", "8"],
+        "is_officer": [False, True], "is_director": [False, False], "is_ten_pct": [False, False],
+        "title": ["", ""], "code": ["P", "P"], "shares": [10.0, 10.0], "price": [1.0, 1.0],
+        "owned_after": [10.0, 10.0], "plan_10b5_1": [False, False]})
+    done = _finish(raw)
+    assert list(done.columns) == INSIDER_COLUMNS
+    assert done["ticker"].tolist() == ["", "PFE"]        # never NaN, and normalised
+    assert done["ticker"].notna().all()                  # so NOT NULL cannot fail
+
+    kept, _stats = clean_insiders(done)
+    assert kept["ticker"].tolist() == ["PFE"]            # and the symbol-less row goes on read

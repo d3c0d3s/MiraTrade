@@ -411,3 +411,16 @@ def honesty_line(root: Path = REPORTS_DIR, translate=None) -> str:
                    "walk-forward.", rules=rules)
     return say("The latest analysis validated {rules} out of sample, {confirmed} confirmed by "
                "walk-forward.", rules=rules, confirmed=best.wf_confirmed)
+
+
+def latest_report_frames(root: Path = REPORTS_DIR) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """The newest report's per-event results and profile rules, or two empty frames.
+
+    What the evidence on an event card is measured against. Empty is a real answer and the card
+    says so rather than showing a confident-looking row of zeros: with no report there is nothing
+    to compare an event to, which is different from having compared it and found nothing.
+    """
+    from miratrade.scan import latest_history_report, load_history
+
+    found = latest_history_report(Path(root))
+    return load_history(found) if found else (pd.DataFrame(), pd.DataFrame())

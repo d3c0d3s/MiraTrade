@@ -169,3 +169,96 @@ def validate(groups=ALL_GROUPS) -> list[str]:
         if f.kind in ("number", "money", "percent", "integer") and not (f.low <= value <= f.high):
             problems.append(f"{f.section}.{f.key}: default {value} is outside {f.low}–{f.high}")
     return problems
+
+
+# --------------------------------------------------------------------------- running it
+
+# These are not hypotheses about the market — they are how the thing runs — so they are kept apart
+# from ALL_GROUPS and are deliberately NOT in `attempts.TESTED_SECTIONS`: changing the language or
+# the size of the account is not a claim about anything and must not tighten a correction.
+OPERATION_GROUPS: tuple[Group, ...] = (
+    Group("Risk", "What a suggestion is allowed to cost. Nothing here reaches your broker: these "
+                  "size an illustration, and the decision and the order are yours.",
+          (Field("risk", "sizing_capital", "Capital to size on", "The figure positions are sized "
+                 "against. It is a number you type, not your real balance — sizing a suggestion to "
+                 "somebody's actual account is a different thing to be doing.",
+                 kind="money", low=0.0, high=100_000_000.0, step=1_000.0),
+           Field("risk", "size_on_balance", "Use the broker balance instead",
+                 "Off by default and worth leaving off. On, positions are sized against the real "
+                 "account, which turns an analysis into advice about your money.", kind="bool"),
+           Field("risk", "risk_per_trade_pct", "Risk per trade", "How much of the capital a single "
+                 "trade may lose at its stop. 1 % is the usual starting point; above 2 % a normal "
+                 "losing streak becomes hard to sit through.",
+                 kind="percent", low=0.05, high=25.0, step=0.1, decimals=2, suffix=" %"),
+           Field("risk", "max_positions", "Most positions at once", "More positions is less "
+                 "concentration and also less attention per position.",
+                 kind="integer", low=1, high=100),
+           Field("risk", "daily_loss_limit_pct", "Stop for the day at", "A day's losses past this "
+                 "and nothing new is suggested.",
+                 kind="percent", low=0.1, high=100.0, step=0.5, decimals=1, suffix=" %"),
+           Field("risk", "max_order_value_pct", "Most of the capital in one position",
+                 "A cap on size regardless of what the stop distance allows.",
+                 kind="percent", low=1.0, high=100.0, step=1.0, decimals=0, suffix=" %"))),
+
+    Group("Data", "Where prices come from and how far back to fetch. The source matters legally as "
+                  "well as practically — see docs/LICENCIAS.md.",
+          (Field("data", "price_source", "Price source", "«Your account» uses your own broker data, "
+                 "which its terms allow for you. «Public websites» is Yahoo and Stooq, whose terms "
+                 "allow personal, non-commercial use at most.",
+                 kind="choice", choices=(("schwab", "Your Schwab account"),
+                                         ("research", "Public websites (personal research only)"))),
+           Field("data", "scan_days", "Days to download", "How far back «Update data» asks for. "
+                 "Days already downloaded are skipped, so raising it is cheap.",
+                 kind="integer", low=1, high=3650, suffix=" days"),
+           Field("data", "cap_tier", "Company size shown", "A view over what is stored, never a "
+                 "reason to download. Insiders buy mostly in small companies — which is also where "
+                 "options often cannot be traded, and the liquidity check is what should decide "
+                 "that, not this.",
+                 kind="choice", choices=(("all", "All"), ("mega", "Mega"), ("large", "Large"),
+                                         ("mid", "Mid"), ("small", "Small"), ("micro", "Micro"),
+                                         ("mid_plus", "Mid and up"))),
+           Field("data", "auto_refresh_minutes", "Download by itself every", "0 turns it off. It "
+                 "only runs while New York is still filing.",
+                 kind="integer", low=0, high=1440, suffix=" min"))),
+
+    Group("Notifications", "Where a new event is announced. Every message carries the honest note, "
+                           "because a list of tickers reads as a recommendation unless it is told "
+                           "otherwise.",
+          (Field("notify", "ntfy_topic", "ntfy topic", "A push to your phone. A public ntfy topic "
+                 "is readable by anyone who knows its name, so use a long random one.", kind="text"),
+           Field("notify", "email_to", "Send email to", "Email carries the detail: the evidence, "
+                 "the contract, the exits and the warnings.", kind="text"),
+           Field("notify", "email_from", "Send email from", "The account that sends it.",
+                 kind="text"),
+           Field("notify", "smtp_host", "SMTP server", "For Gmail, an app password — never the "
+                 "account password. It goes in the credential manager, never in a file.",
+                 kind="text"),
+           Field("notify", "smtp_port", "SMTP port", "587 for STARTTLS, 465 for SSL.",
+                 kind="integer", low=1, high=65535),
+           Field("notify", "only_tradeable", "Only what can be traded", "Leaves out events whose "
+                 "contract fails the liquidity check. A signal you cannot get filled on is not a "
+                 "signal.", kind="bool"),
+           Field("notify", "max_events", "Most events per message", "A long list stops being read.",
+                 kind="integer", low=1, high=500))),
+
+    Group("Interface", "How the app presents itself.",
+          (Field("ui", "language", "Language", "English is the source language of every screen; "
+                 "Spanish is translated.",
+                 kind="choice", choices=(("en", "English"), ("es", "Español"))),)),
+)
+
+# `broker` is deliberately absent from both lists. It holds `live_trading`, and a front-end that
+# cannot send an order must not be able to switch on the thing that can. That stays where the
+# credentials are: on the machine, in front of the person.
+
+
+def offered(groups=None) -> frozenset[str]:
+    """The sections a form offers, and therefore the only ones a front-end may write.
+
+    `broker` is not among them and that is the point: it holds `live_trading`, and a front-end that
+    cannot send an order must not be able to switch on the thing that can. Deciding this from the
+    form definitions rather than from a second hand-written list means the two cannot drift, and
+    the one that would drift silently is the safety one.
+    """
+    chosen = groups if groups is not None else (ALL_GROUPS + OPERATION_GROUPS)
+    return frozenset(f.section for g in chosen for f in g.fields)

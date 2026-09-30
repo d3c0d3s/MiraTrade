@@ -280,9 +280,17 @@ def test_data_folders_do_not_depend_on_the_launch_directory(tmp_path, monkeypatc
     import subprocess
     import sys
 
+    import os
+
     code = ("from miratrade.config import CACHE_DIR, REPORTS_DIR, base_dir;"
             "print(CACHE_DIR.is_absolute(), REPORTS_DIR.is_absolute(), CACHE_DIR.parent == base_dir())")
-    out = subprocess.run([sys.executable, "-c", code], cwd=tmp_path, capture_output=True, text=True, check=True)
+    # This is about what happens with NOTHING set, so the conftest's own isolation variables are
+    # cleared for it — they exist to keep subprocesses off the real store, and here the subprocess
+    # is the thing under test.
+    bare = {k: v for k, v in os.environ.items()
+            if k not in ("MIRATRADE_CACHE", "MIRATRADE_REPORTS")}
+    out = subprocess.run([sys.executable, "-c", code], cwd=tmp_path, capture_output=True,
+                         text=True, check=True, env=bare)
     assert out.stdout.split() == ["True", "True", "True"]
 
     monkeypatch.setenv("MIRATRADE_REPORTS", str(tmp_path / "otros"))

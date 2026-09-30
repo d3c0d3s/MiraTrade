@@ -9,15 +9,19 @@ Three rules, and the first two are enforced by tests rather than by intention:
 
 * **It never sends an order.** Not a missing feature: a deliberate absence. Broker credentials and
   the decision to trade stay with the person, on their own machine.
-* **It never downloads.** Fetching is the Scanner's job on the desktop, and the scheduled task's on
-  the server. An API that fetches turns a page refresh from a phone into a request to the SEC.
+* **No read ever fetches.** A page refresh from a phone must never become a request to the SEC.
+  Downloading happens when a person asks for it, as a job with a state you can look at
+  (:mod:`miratrade.jobs`) — which is the honest form of that rule once the web has to replace the
+  desktop app rather than accompany it.
 * **It does not authenticate, and says so.** It binds to localhost and Cloudflare Access sits in
   front of it. Writing a half-authentication here would be worse than none, because somebody would
   trust it.
 
-Writes are limited to settings — the parameter form has to work from the web, which is the whole
-reason the settings moved into the store — and they go through :mod:`miratrade.prefs`, so the same
-validation that protects the desktop protects this.
+Writes go through the core's own functions, so the validation that protects the desktop protects
+this: settings through :mod:`miratrade.prefs`, paper trades through :mod:`miratrade.practice`, jobs
+through :mod:`miratrade.jobs`. One thing is deliberately missing from all of it — the ``broker``
+section, which holds ``live_trading``. A front-end that cannot send an order must not be able to
+switch on the thing that can.
 """
 from __future__ import annotations
 
@@ -30,7 +34,7 @@ import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from miratrade import attempts, freshness, params, prefs, scanner, store
+from miratrade import attempts, card, freshness, jobs, params, prefs, scanner, store
 from miratrade.config import CAP_TIERS, REPORTS_DIR
 from miratrade.scan import EVENT_KINDS, count_events, load_events, stored_days
 
@@ -85,6 +89,24 @@ class Setting(BaseModel):
     section: str
     key: str
     value: Any
+
+
+class StartJob(BaseModel):
+    kind: str = Field(description="download | search | analysis")
+    days: int = Field(30, ge=1, le=3650)
+    cap: str = "all"
+
+
+class OpenTrade(BaseModel):
+    """A paper position. No real money and no broker: see docs/ALCANCE.md."""
+    ticker: str
+    signal_date: str | None = None
+    variant: str = "call45_40"
+    note: str = ""
+
+
+class CloseTrade(BaseModel):
+    price: float | None = Field(None, description="omit to use the last stored price")
 
 
 class Listing(BaseModel):
@@ -272,18 +294,24 @@ def create_app(db_path: Path | None = None, reports_dir: Path | None = None) -> 
         """
         cfg, unknown = prefs.read(db)
         touched = prefs.changed(db)
-        groups = []
-        for group in params.ALL_GROUPS:
-            groups.append({
-                "title": group.title, "note": group.note,
-                "fields": [{"section": f.section, "key": f.key, "label": f.label, "help": f.help,
-                            "kind": f.kind, "low": f.low, "high": f.high, "step": f.step,
-                            "decimals": f.decimals, "suffix": f.suffix,
-                            "value": _plain(getattr(getattr(cfg, f.section), f.key)),
-                            "default": _plain(f.default()),
-                            "changed": (f.section, f.key) in touched}
-                           for f in group.fields]})
-        return {"groups": groups, "ignored": unknown,
+
+        def describe(groups):
+            return [{"title": g.title, "note": g.note,
+                     "fields": [{"section": f.section, "key": f.key, "label": f.label,
+                                 "help": f.help, "kind": f.kind, "low": f.low, "high": f.high,
+                                 "step": f.step, "decimals": f.decimals, "suffix": f.suffix,
+                                 "choices": [{"value": v, "label": lb} for v, lb in f.choices],
+                                 "value": _plain(getattr(getattr(cfg, f.section), f.key)),
+                                 "default": _plain(f.default()),
+                                 "changed": (f.section, f.key) in touched}
+                                for f in g.fields]} for g in groups]
+
+        # Two lists, apart on purpose. The rules are hypotheses about the market, and every change
+        # to one is another test — which is what the count underneath is for. How the thing runs is
+        # not a claim about anything.
+        return {"rules": describe(params.ALL_GROUPS),
+                "operation": describe(params.OPERATION_GROUPS),
+                "ignored": unknown,
                 "attempts": attempts.count(db, "search"),
                 "multiple_testing": attempts.say(attempts.count(db, "search"))}
 
@@ -294,6 +322,13 @@ def create_app(db_path: Path | None = None, reports_dir: Path | None = None) -> 
         Through :mod:`miratrade.prefs`, so an unknown section or a misspelt key is refused here the
         same way it is refused on the desktop — a typo must never be able to quietly disable a limit.
         """
+        if change.section not in params.offered():
+            # Not "unknown" — refused. `broker` is a real section that the desktop can change and
+            # this cannot, because it holds `live_trading`. Saying so plainly beats a 404 that
+            # looks like a bug and invites somebody to route around it.
+            raise HTTPException(400, f"{change.section!r} cannot be changed from here. The broker "
+                                     f"settings, including live trading, stay on the machine where "
+                                     f"the credentials are.")
         try:
             prefs.put(db, change.section, change.key, change.value)
         except KeyError as e:
@@ -301,6 +336,137 @@ def create_app(db_path: Path | None = None, reports_dir: Path | None = None) -> 
         cfg, _ = prefs.read(db)
         return {"section": change.section, "key": change.key,
                 "value": _plain(getattr(getattr(cfg, change.section), change.key))}
+
+    # ------------------------------------------------------------------ the long things
+
+    @app.get("/api/jobs")
+    def list_jobs() -> dict:
+        """What is running and what just ran. ``fetches`` says which of them touches a network."""
+        running = jobs.RUNNER.current()
+        return {"running": running.state() if running else None,
+                "recent": [j.state() for j in jobs.RUNNER.recent()]}
+
+    @app.get("/api/jobs/{job_id}")
+    def one_job(job_id: str) -> dict:
+        job = jobs.RUNNER.get(job_id)
+        if job is None:
+            raise HTTPException(404, f"No job {job_id!r}. They are kept for a while, not for ever.")
+        return job.state()
+
+    @app.post("/api/jobs")
+    def start_job(request: StartJob) -> dict:
+        """Start a download, a search or a backtest.
+
+        The only path in the API that can reach a network, it only ever does so because a person
+        asked, and ``GET /api/jobs`` shows what it is doing while it does it.
+        """
+        if request.kind not in jobs.KINDS:
+            raise HTTPException(400, f"No job called {request.kind!r}: {', '.join(jobs.KINDS)}")
+        extra = {}
+        if request.kind == "analysis":
+            extra["out"] = reports_root / f"{datetime.now():%Y%m%d-%H%M}-{request.days}d"
+        try:
+            job = jobs.RUNNER.start(request.kind, days=request.days, cap=request.cap, **extra)
+        except RuntimeError as e:               # one at a time: two scans is a lock fight
+            raise HTTPException(409, str(e)) from e
+        return job.state()
+
+    @app.delete("/api/jobs/{job_id}")
+    def cancel_job(job_id: str) -> dict:
+        if not jobs.RUNNER.cancel(job_id):
+            raise HTTPException(404, f"No job {job_id!r} is running.")
+        return {"cancelled": job_id}
+
+    # ------------------------------------------------------------------ the paper journal
+
+    def last_prices(db, tickers) -> dict:
+        if not tickers:
+            return {}
+        return {t: float(bars["close"].iloc[-1])
+                for t, bars in store.prices(db, sorted(tickers)).items() if len(bars)}
+
+    def card_for(db, ticker: str, signal_date: str | None, variant: str, cfg):
+        from miratrade.report import honesty_line, latest_report_frames
+
+        ticker = ticker.upper()
+        found = load_events(db, ticker=ticker, limit=50)
+        if signal_date:
+            found = found[found["signal_date"].astype(str).str.startswith(signal_date)]
+        event = found.iloc[0].to_dict() if len(found) else {"ticker": ticker}
+        bars = store.prices(db, [ticker]).get(ticker)
+        history, rules = latest_report_frames(reports_root)
+        return card.build(event, bars, db=db, cfg=cfg, variant=variant, history=history,
+                          rules=rules, honesty=honesty_line(reports_root))
+
+    @app.get("/api/practice")
+    def practice(db=Depends(reading)) -> dict:
+        """The paper trades, marked against the last stored price. No real money, ever."""
+        from miratrade.practice import PRACTICE_PATH, account_equity, load, mark, summary
+
+        cfg, _ = prefs.read(db)
+        trades = load(PRACTICE_PATH)
+        mark(trades, last_prices(db, {t.ticker for t in trades}), cfg=cfg)
+        # never consults a broker: `size_on_balance` is off by default and a test holds it there
+        equity, source = account_equity(None, cfg=cfg)
+        return {"equity": equity, "equity_source": source,
+                "summary": {k: _plain(v) for k, v in summary(trades, equity).items()},
+                "trades": [{k: _plain(v) for k, v in vars(t).items()} for t in trades],
+                "note": "No real money. A call is valued from the stock, not from a quote."}
+
+    @app.post("/api/practice")
+    def open_paper_trade(request: OpenTrade, db=Depends(reading)) -> dict:
+        """Open the contract a profile would buy, as a paper position sized by the risk settings."""
+        from miratrade.practice import PRACTICE_PATH, account_equity, load, open_trade, save
+
+        cfg, _ = prefs.read(db)
+        built = card_for(db, request.ticker, request.signal_date, request.variant, cfg)
+        if built.contract is None:
+            raise HTTPException(400, built.contract_note or "No contract for this event.")
+        trades = load(PRACTICE_PATH)
+        equity, _source = account_equity(None, cfg=cfg)
+        c = built.contract
+        try:
+            trade = open_trade(trades, ticker=built.ticker, kind="call", entry=c["premium"],
+                               stop=c["stop"], target=c["target"], equity=equity,
+                               note=(request.note or built.what)[:120], strike=c["strike"],
+                               expiry=str(c["expiry"]), iv=c["iv"], cfg=cfg)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        save(trades, PRACTICE_PATH)
+        return {k: _plain(v) for k, v in vars(trade).items()}
+
+    @app.post("/api/practice/{trade_id}/close")
+    def close_paper_trade(trade_id: str, request: CloseTrade, db=Depends(reading)) -> dict:
+        from miratrade.practice import PRACTICE_PATH, close_trade, load, option_value, save
+
+        cfg, _ = prefs.read(db)
+        trades = load(PRACTICE_PATH)
+        trade = next((t for t in trades if t.id == trade_id), None)
+        if trade is None:
+            raise HTTPException(404, f"No paper trade {trade_id!r}.")
+        if trade.status != "open":
+            raise HTTPException(400, f"That one is already {trade.status}.")
+        price = request.price
+        if price is None:
+            last = last_prices(db, {trade.ticker}).get(trade.ticker)
+            if last is None:
+                raise HTTPException(400, "No stored price for it; download data or pass a price.")
+            price = option_value(trade, last, date.today(), cfg) if trade.kind == "call" else last
+        close_trade(trade, float(price), reason="manual")
+        save(trades, PRACTICE_PATH)
+        return {k: _plain(v) for k, v in vars(trade).items()}
+
+    # ------------------------------------------------------------------ one event in full
+
+    @app.get("/api/signal/{ticker}")
+    def signal(ticker: str, signal_date: str | None = None, variant: str = "call45_40",
+               db=Depends(reading)) -> dict:
+        """What was filed, what similar events did, the contract, and the reasons not to take it."""
+        cfg, _ = prefs.read(db)
+        built = card_for(db, ticker, signal_date, variant, cfg)
+        if not built.signal_date:
+            raise HTTPException(404, f"No stored event for {ticker.upper()}.")
+        return built.as_dict()
 
     return app
 

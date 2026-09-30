@@ -41,4 +41,15 @@ def _never_the_real_database(tmp_path, monkeypatch):
     # read the real user's settings.json into its own store and then assert on whatever that person
     # happens to have configured — which passes on one machine and fails on the next.
     monkeypatch.setattr(miratrade.prefs, "JSON_PATH", tmp_path / "settings.json")
+
+    # …and the same protection for anything that starts a SUBPROCESS. Patching module attributes
+    # stops at the process boundary, so a test that starts a job walks straight past everything
+    # above and opens the real store. That is not hypothetical: a jobs test ran a real reprocess
+    # and rewrote a window of the user's events table. The environment variables cross the
+    # boundary; the monkeypatched attributes do not.
+    monkeypatch.setenv("MIRATRADE_DB", str(path))
+    monkeypatch.setenv("MIRANDAS_DATA", str(tmp_path / "data-home"))
+    monkeypatch.setenv("MIRATRADE_HOME", str(tmp_path / "app-home"))
+    monkeypatch.setenv("MIRATRADE_CACHE", str(tmp_path / "cache"))
+    monkeypatch.setenv("MIRATRADE_REPORTS", str(tmp_path / "reports"))
     yield path

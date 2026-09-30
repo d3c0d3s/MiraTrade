@@ -107,10 +107,24 @@ def test_it_can_never_download(client, monkeypatch):
         assert client.get(path).status_code == 200, path
 
 
-def test_the_only_write_is_a_setting(client):
+def test_every_write_is_one_of_three_things(client):
+    """Settings, a job, or a paper trade. Once the web has to replace the desktop app those three
+    have to work from it; nothing else may.
+
+    `broker` is missing from all of them on purpose: it holds `live_trading`, and a front-end that
+    cannot send an order must not be able to switch on the thing that can.
+    """
     writes = {(r.path, m) for r in client.app.routes
               for m in getattr(r, "methods", set()) if m in ("POST", "PUT", "PATCH", "DELETE")}
-    assert writes == {("/api/settings", "PUT")}
+    assert writes == {("/api/settings", "PUT"),
+                      ("/api/jobs", "POST"), ("/api/jobs/{job_id}", "DELETE"),
+                      ("/api/practice", "POST"), ("/api/practice/{trade_id}/close", "POST")}
+
+    from miratrade import params
+    sections = {f.section for g in (params.ALL_GROUPS + params.OPERATION_GROUPS) for f in g.fields}
+    assert "broker" not in sections
+    assert client.put("/api/settings", json={"section": "broker", "key": "live_trading",
+                                             "value": True}).status_code == 400
 
 
 # --------------------------------------------------------------------------- what it serves
@@ -195,11 +209,17 @@ def test_reports_are_listed_and_readable(client):
 
 def test_settings_carry_their_own_explanation(client):
     """So the web builds the same form as the desktop from one description instead of two."""
+    from miratrade import params
+
     body = client.get("/api/settings").json()
-    fields = [f for g in body["groups"] for f in g["fields"]]
-    assert len(fields) == len(__import__("miratrade.params", fromlist=["x"]).fields())
-    one = next(f for f in fields if f["key"] == "min_value_usd")
+    rules = [f for g in body["rules"] for f in g["fields"]]
+    running = [f for g in body["operation"] for f in g["fields"]]
+    assert len(rules) == len(params.fields())
+    assert len(running) == len(params.fields(params.OPERATION_GROUPS))
+    one = next(f for f in rules if f["key"] == "min_value_usd")
     assert one["label"] and len(one["help"]) > 40 and one["changed"] is False
+    # …and the two lists are apart because only one of them is a claim about the market
+    assert {f["section"] for f in running}.isdisjoint({f["section"] for f in rules})
 
 
 def test_a_setting_can_be_changed_and_comes_back_changed(client, filled):
@@ -211,7 +231,7 @@ def test_a_setting_can_be_changed_and_comes_back_changed(client, filled):
     assert prefs.read(db)[0].insider.min_value_usd == 250_000
     db.close()
 
-    field = next(f for g in client.get("/api/settings").json()["groups"]
+    field = next(f for g in client.get("/api/settings").json()["rules"]
                  for f in g["fields"] if f["key"] == "min_value_usd")
     assert field["changed"] is True and field["default"] == 25_000
 
