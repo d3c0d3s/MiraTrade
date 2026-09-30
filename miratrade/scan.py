@@ -163,6 +163,19 @@ class Evidence:
     mean_return: float = float("nan")
     similar_to: list[str] = field(default_factory=list)   # the conditions used to narrow the match
     rules: list[str] = field(default_factory=list)        # validated profile rules the event meets
+    # What the same profile did across EVERY event in the report, not just the similar ones. A rate
+    # with nothing to compare it against can only ever agree with itself: 22 % is good or terrible
+    # depending on what a day nobody selected does, and until this existed nobody could tell.
+    base_target: float = float("nan")
+    base_n: int = 0
+
+    @property
+    def rate(self):
+        """The target rate as a proportion that knows its own uncertainty and its base."""
+        from miratrade.stats import Rate
+
+        base = None if self.base_n == 0 or self.base_target != self.base_target else self.base_target
+        return Rate(hits=round(self.target * self.n) if self.n else 0, n=self.n, base=base)
 
     @property
     def sentence(self) -> str:
@@ -170,17 +183,23 @@ class Evidence:
         return self.say()
 
     def say(self, translate=None, number=None) -> str:
-        """The same sentence through the interface's ``t()`` and its own number format."""
+        """The same sentence through the interface's ``t()`` and its own number format.
+
+        It leads with a range rather than a number on purpose. "22 %" reads as a measurement;
+        "22 %, between 13 and 34" reads as what it is, which is an estimate from not much data.
+        """
         say = sayer(translate)
         if self.n == 0:
             return say("No similar event in the latest report.")
+        from miratrade.stats import say_rate
+
         num = number or (lambda v, decimals=0: f"{v:,.{decimals}f}".replace("-", "−"))
         pct = lambda x: f"{num(x * 100, 0)} %"  # noqa: E731
         mean = f"{self.mean_return * 100:+.0f}".replace("-", "−")
-        return say("{n} similar events: {target} reached the target first, {stop} the stop and "
-                   "{neither} neither. Average result {mean} %.",
-                   n=num(self.n, 0), target=pct(self.target), stop=pct(self.stop),
-                   neither=pct(self.neither), mean=mean)
+        return say("{n} similar events. Reached the target first: {target}. Stop first {stop}, "
+                   "neither {neither}. Average result {mean} %.",
+                   n=num(self.n, 0), target=say_rate(self.rate, translate, number),
+                   stop=pct(self.stop), neither=pct(self.neither), mean=mean)
 
 
 def _true(ev: Mapping, key: str) -> bool:
@@ -213,6 +232,13 @@ def evidence(ev: Mapping, history: pd.DataFrame, variant: str = DEFAULT_VARIANT,
         r = sim[res]
         out.target, out.stop, out.neither = float((r == 1).mean()), float((r == -1).mean()), float((r == 0).mean())
         out.mean_return = float(sim[f"ret_{variant}"].mean())
+    # The base rate: the same profile across every event in the report. It is the weaker of the two
+    # comparisons worth having — the stronger one is placebo days matched on the quarter, as the
+    # 8-K study used — but it is the one the stored data already supports, and it is the difference
+    # between "22 % hit the target" and "22 % against 19 % for anything at all".
+    out.base_n = len(h)
+    if out.base_n:
+        out.base_target = float((h[res] == 1).mean())
     out.rules = matching_rules(ev, rules, variant)
     return out
 

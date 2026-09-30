@@ -35,10 +35,19 @@ def test_evidence_narrows_while_enough_events_remain():
     assert e.similar_to == ["ins:exec_buy"] and e.n == 40
     assert e.target == 0.75 and e.stop == 0.25 and e.neither == 0
     assert round(e.mean_return, 4) == round(0.75 * 0.4 - 0.25 * 0.25, 4)
-    assert e.sentence == ("40 similar events: 75 % reached the target first, 25 % the stop and "
-                          "0 % neither. Average result +24 %.")
+    # The sentence leads with a range, and names what the rate is measured against. "75 %" reads
+    # as a measurement; "75 %, between 60 and 86, against 46 % for anything" reads as an estimate
+    # from not much data, which is what it is.
+    said = e.sentence
+    assert "40 similar events" in said and "75 %" in said
+    assert "between" in said and "of any kind" in said
+    assert "Average result +24 %." in said
+    # the base is every event in the report, so the similar ones are inside it too
+    assert e.base_n > e.n and e.rate.base is not None
+
     big = Evidence("call45_40", n=1493, target=0.32, stop=0.66, neither=0.02, mean_return=-0.03)
-    assert big.sentence.startswith("1,493 similar events: 32 % reached the target first, 66 % the stop")
+    assert big.sentence.startswith("1,493 similar events")
+    assert big.rate.base is None          # no history behind it: an unknown, never a base of zero
     assert big.sentence.endswith("Average result −3 %.")
 
 

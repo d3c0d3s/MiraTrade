@@ -5,6 +5,9 @@
 # uno que ya tiene datos dentro.
 set -euo pipefail
 
+# Convención de esta red: el CTID son los dos últimos octetos de su IP. 150210 es 192.168.150.210,
+# y el contenedor del túnel, 150253, es 192.168.150.253. Los números de abajo no son arbitrarios y
+# tienen que moverse juntos.
 CTID="${CTID:-150210}"
 HOSTNAME="${HOSTNAME_CT:-miratrade}"
 # Disco: la base son 375 MB hoy y crece con cada descarga; el venv ~900 MB, y FinBERT en ONNX añade
@@ -20,7 +23,7 @@ TEMPLATE="${TEMPLATE:-debian-12-standard_12.7-1_amd64.tar.zst}"
 # IP fija, no DHCP: a este contenedor lo referencian el túnel desde el CT 150253 y una regla de
 # cortafuegos por origen. Las dos se rompen en silencio si la dirección cambia.
 IPV4="${IPV4:-192.168.150.210/24}"
-GATEWAY="${GATEWAY:-192.168.150.1}"
+GATEWAY="${GATEWAY:-192.168.150.254}"
 NAMESERVER="${NAMESERVER:-192.168.150.101}"
 SEARCHDOMAIN="${SEARCHDOMAIN:-miratechcloud.com}"
 NET="${NET:-name=eth0,bridge=${BRIDGE},ip=${IPV4},gw=${GATEWAY}}"

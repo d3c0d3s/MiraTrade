@@ -223,7 +223,10 @@ def test_signals_page_shows_events_with_evidence(qtbot, tmp_path):
     qtbot.addWidget(page)
     assert page.list.count() == 2 and page.empty.isHidden()
     assert page.ticker.text() == "ACME" and page.price.text() == "10,20 $"
-    assert "40 eventos parecidos: 50 %" in page.evidence_text.text()
+    said = page.evidence_text.text()
+    # translated, with the range and the comparison the rate is measured against
+    assert "40 eventos parecidos" in said and "50 %" in said
+    assert "entre" in said and "cualquier tipo" in said
     assert "Ninguna todavía" in page.rules_text.text()
     assert "Tendencia al alza" in page.context.text()
     assert page.chart.event_date == idx[-3] and len(page.chart.df) == 120

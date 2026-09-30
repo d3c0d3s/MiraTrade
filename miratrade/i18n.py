@@ -787,6 +787,15 @@ ES: dict[str, str] = {
         "Máximo del objetivo que puede comerse la ida y vuelta",
     "The backtest charged no spread. If getting in and out costs a third of what you were aiming for, the edge it measured was never there to take.":
         "El backtest no cobró spread. Si entrar y salir cuesta un tercio de lo que buscabas, la ventaja que midió nunca estuvo ahí para cogerla.",
+    # ------------------------------------------------- how sure a number is (miratrade/stats.py)
+    "no cases": "sin casos",
+    "{value} (between {low} and {high})": "{value} (entre {low} y {high})",
+    "{value} (between {low} and {high}), against {base} for events of any kind":
+        "{value} (entre {low} y {high}), frente al {base} de los eventos de cualquier tipo",
+    "{n} similar events. Reached the target first: {target}. Stop first {stop}, neither "
+    "{neither}. Average result {mean} %.":
+        "{n} eventos parecidos. Llegaron antes al objetivo: {target}. Antes al stop {stop}, a "
+        "ninguno {neither}. Resultado medio {mean} %.",
     # ------------------------------------------------- how old the data is (miratrade/freshness.py)
     "Nothing has been downloaded yet. Go to Scanner and press «Update data».":
         "Todavía no se ha descargado nada. Ve al Scanner y pulsa «Actualizar datos».",
