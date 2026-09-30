@@ -1,0 +1,44 @@
+[Unit]
+Description=MiraTrade: API y web
+Documentation=https://github.com/d3c0d3s/MiraTrade
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=miratrade
+Group=miratrade
+WorkingDirectory=/opt/miratrade/src
+EnvironmentFile=/etc/miratrade.env
+
+# Escucha SOLO en la interfaz local. Esta API no autentica: delante va Cloudflare Access (o la VPN
+# de UniFi). Media autenticación sería peor que ninguna, porque alguien se fiaría de ella.
+ExecStart=/opt/miratrade/venv/bin/python -X utf8 -m miratrade.cli serve --host 127.0.0.1 --port 8787
+
+Restart=on-failure
+RestartSec=5
+
+# Endurecido: este servicio lee una base de datos y devuelve JSON. No necesita nada más.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+# Lo único que puede escribir. El resto del disco es de sólo lectura para él.
+ReadWritePaths=/opt/miratrade/data /opt/miratrade/reports /opt/miratrade/app /opt/miratrade/cache
+# La web no descarga y no manda órdenes; no necesita salir a internet. Las descargas las hacen los
+# temporizadores, que sí tienen red. Quitar esta línea si algún día la web tuviera que salir.
+PrivateNetwork=no
+IPAddressAllow=localhost
+
+[Install]
+WantedBy=multi-user.target

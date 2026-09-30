@@ -1,0 +1,30 @@
+[Unit]
+Description=MiraTrade: descarga desatendida (solo los días que faltan)
+Documentation=https://github.com/d3c0d3s/MiraTrade
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=miratrade
+Group=miratrade
+WorkingDirectory=/opt/miratrade/src
+EnvironmentFile=/etc/miratrade.env
+
+# `schedule run` mira primero la tabla `coverage` y pide SOLO los días laborables sobre los que
+# nadie ha preguntado nunca. Por eso es seguro llamarlo a menudo: cuando no falta nada, no cuesta
+# nada. Ver miratrade/schedule.py.
+ExecStart=/opt/miratrade/venv/bin/python -X utf8 -m miratrade.cli schedule run
+
+# Una descarga completa puede tardar; el temporizador no la solapa (ver el .timer).
+TimeoutStartSec=3h
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+ReadWritePaths=/opt/miratrade/data /opt/miratrade/reports /opt/miratrade/app /opt/miratrade/cache

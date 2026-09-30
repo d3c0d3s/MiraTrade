@@ -1,0 +1,10 @@
+[Unit]
+Description=MiraTrade: la copia diaria, antes de que empiece a escribirse nada
+
+[Timer]
+OnCalendar=*-*-* 04:30 America/New_York
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

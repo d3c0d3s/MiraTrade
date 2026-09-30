@@ -1,0 +1,22 @@
+[Unit]
+Description=MiraTrade: copia diaria de todo lo que dolería perder
+Documentation=https://github.com/d3c0d3s/MiraTrade
+
+[Service]
+Type=oneshot
+User=miratrade
+Group=miratrade
+WorkingDirectory=/opt/miratrade/src
+EnvironmentFile=/etc/miratrade.env
+
+# Pasa por el backup en línea de SQLite, nunca por una copia de bytes: una base WAL en uso guarda
+# parte de su estado en el -wal y una copia cruda puede salir rota pareciendo perfecta. Y comprueba
+# la integridad antes de quedarse con la copia, porque guardar una base dañada empuja la última
+# buena un día más cerca de borrarse.
+ExecStart=/opt/miratrade/venv/bin/python -X utf8 -m miratrade.cli store backup
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/miratrade/data /opt/miratrade/reports /opt/miratrade/app

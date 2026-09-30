@@ -1,0 +1,19 @@
+[Unit]
+Description=MiraTrade: mientras Nueva York presenta, y a las 23:00 como red de seguridad
+
+[Timer]
+# Dos disparos porque son dos preguntas distintas. Durante el día, porque un evento visto hoy vale
+# más que el mismo mañana. A las 23:00, porque las pasadas del día pueden haberse perdido todas:
+# máquina dormida, red caída, nadie delante.
+#
+# En horario de Nueva York, que es el que rige las presentaciones. El contenedor va en UTC a
+# propósito (ver preparar.sh), así que la zona se dice aquí y no se hereda de nadie.
+OnCalendar=Mon..Fri 09..22:00 America/New_York
+OnCalendar=Mon..Fri 23:00 America/New_York
+Persistent=true
+# Si la máquina estuvo apagada, no dispara doce veces al arrancar: una, y la siguiente a su hora.
+AccuracySec=5min
+RandomizedDelaySec=90
+
+[Install]
+WantedBy=timers.target
