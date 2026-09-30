@@ -367,6 +367,7 @@ def create_app(db_path: Path | None = None, reports_dir: Path | None = None,
         # not a claim about anything.
         return {"rules": describe(params.ALL_GROUPS),
                 "operation": describe(params.OPERATION_GROUPS),
+                "news": describe(params.NEWS_GROUPS),
                 "ignored": unknown,
                 "attempts": attempts.count(db, "search"),
                 "multiple_testing": attempts.say(attempts.count(db, "search"), say)}

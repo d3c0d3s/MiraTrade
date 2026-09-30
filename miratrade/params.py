@@ -252,6 +252,39 @@ OPERATION_GROUPS: tuple[Group, ...] = (
 # credentials are: on the machine, in front of the person.
 
 
+NEWS_GROUPS: tuple[Group, ...] = (
+    Group("News (FinBERT)",
+          "Reads the prose of an 8-K and says whether it is worded positively or negatively. "
+          "It is OFF by default, and that is the honest setting: no news signal here has survived "
+          "an out-of-sample test. What it shows is what was published — never a forecast.",
+          (Field("sentiment", "enabled", "Read the filings",
+                 "On, each event shows how the filings around it are worded. It changes nothing "
+                 "about which events are found, and no number on any screen depends on it.",
+                 kind="bool"),
+           Field("sentiment", "backend", "How to run the model",
+                 "ONNX installs about 250 MB and gives the same answer as the full framework, "
+                 "which installs about 2.5 GB. Use the heavy one only if ONNX will not build.",
+                 kind="choice", choices=(("onnx", "ONNX (light)"),
+                                         ("transformers", "Full framework (heavy)"))),
+           Field("sentiment", "model", "Model", "FinBERT is a classifier trained on financial "
+                 "language: it returns positive, negative or neutral. It is not a chat model and "
+                 "cannot be prompted.", kind="text"),
+           Field("sentiment", "min_confidence", "Least confidence to call it",
+                 "Below this the answer is «unclear», which is a real answer. A weak guess dressed "
+                 "as a verdict is worse than no verdict.",
+                 kind="number", low=0.0, high=1.0, step=0.05, decimals=2),
+           Field("sentiment", "neutral_band", "Treat as neutral within",
+                 "How far from the middle the wording has to lean before it counts as leaning at "
+                 "all.", kind="number", low=0.0, high=1.0, step=0.05, decimals=2),
+           Field("sentiment", "window_days", "Filings from the last",
+                 "How far back from an event a filing is read.",
+                 kind="integer", low=1, high=180, suffix=" days"),
+           Field("sentiment", "max_headlines", "Most passages per event",
+                 "A long filing is scored in pieces and averaged, so one strongly worded sentence "
+                 "does not decide the whole thing.", kind="integer", low=1, high=200))),
+)
+
+
 def offered(groups=None) -> frozenset[str]:
     """The sections a form offers, and therefore the only ones a front-end may write.
 
@@ -260,5 +293,5 @@ def offered(groups=None) -> frozenset[str]:
     form definitions rather than from a second hand-written list means the two cannot drift, and
     the one that would drift silently is the safety one.
     """
-    chosen = groups if groups is not None else (ALL_GROUPS + OPERATION_GROUPS)
+    chosen = groups if groups is not None else (ALL_GROUPS + OPERATION_GROUPS + NEWS_GROUPS)
     return frozenset(f.section for g in chosen for f in g.fields)

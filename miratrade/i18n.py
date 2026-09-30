@@ -787,6 +787,54 @@ ES: dict[str, str] = {
         "Máximo del objetivo que puede comerse la ida y vuelta",
     "The backtest charged no spread. If getting in and out costs a third of what you were aiming for, the edge it measured was never there to take.":
         "El backtest no cobró spread. Si entrar y salir cuesta un tercio de lo que buscabas, la ventaja que midió nunca estuvo ahí para cogerla.",
+    # ------------------------------------------------- FinBERT (miratrade/news/sentiment.py)
+    "News (FinBERT)": "Noticias (FinBERT)",
+    "Reads the prose of an 8-K and says whether it is worded positively or negatively. It is OFF "
+    "by default, and that is the honest setting: no news signal here has survived an out-of-sample "
+    "test. What it shows is what was published — never a forecast.":
+        "Lee la prosa de un 8-K y dice si está redactada en positivo o en negativo. Viene "
+        "APAGADO, y ese es el ajuste honesto: aquí ninguna señal de noticias ha sobrevivido a una "
+        "prueba fuera de muestra. Lo que enseña es lo que se publicó, nunca un pronóstico.",
+    "Read the filings": "Leer las presentaciones",
+    "On, each event shows how the filings around it are worded. It changes nothing about which "
+    "events are found, and no number on any screen depends on it.":
+        "Encendido, cada evento muestra cómo están redactadas las presentaciones de su alrededor. "
+        "No cambia qué eventos se encuentran, y ningún número de ninguna pantalla depende de ello.",
+    "How to run the model": "Cómo ejecutar el modelo",
+    "ONNX installs about 250 MB and gives the same answer as the full framework, which installs "
+    "about 2.5 GB. Use the heavy one only if ONNX will not build.":
+        "ONNX instala unos 250 MB y da la misma respuesta que el framework completo, que instala "
+        "unos 2,5 GB. Usa el pesado solo si ONNX no compila.",
+    "ONNX (light)": "ONNX (ligero)",
+    "Full framework (heavy)": "Framework completo (pesado)",
+    "Model": "Modelo",
+    "FinBERT is a classifier trained on financial language: it returns positive, negative or "
+    "neutral. It is not a chat model and cannot be prompted.":
+        "FinBERT es un clasificador entrenado en lenguaje financiero: devuelve positivo, negativo "
+        "o neutro. No es un modelo de chat y no se le pueden dar instrucciones.",
+    "Least confidence to call it": "Confianza mínima para pronunciarse",
+    "Below this the answer is «unclear», which is a real answer. A weak guess dressed as a verdict "
+    "is worse than no verdict.":
+        "Por debajo de esto la respuesta es «no está claro», que es una respuesta de verdad. Una "
+        "conjetura floja disfrazada de veredicto es peor que no tener veredicto.",
+    "Treat as neutral within": "Tratar como neutro dentro de",
+    "How far from the middle the wording has to lean before it counts as leaning at all.":
+        "Cuánto tiene que inclinarse la redacción respecto al centro para contar como inclinada.",
+    "Filings from the last": "Presentaciones de los últimos",
+    "How far back from an event a filing is read.":
+        "Hasta cuándo hacia atrás se lee una presentación desde un evento.",
+    "Most passages per event": "Máximo de pasajes por evento",
+    "A long filing is scored in pieces and averaged, so one strongly worded sentence does not "
+    "decide the whole thing.":
+        "Una presentación larga se puntúa por trozos y se promedia, para que una sola frase muy "
+        "cargada no decida el conjunto.",
+    "positive": "positiva", "negative": "negativa", "neutral": "neutra",
+    "The wording does not lean either way clearly enough to call it.":
+        "La redacción no se inclina con claridad suficiente hacia ningún lado.",
+    "Wording reads {label} ({confidence} % sure). This says what was published, not what will "
+    "happen.":
+        "La redacción se lee {label} ({confidence} % de confianza). Esto dice lo que se publicó, "
+        "no lo que va a pasar.",
     # ------------------------------------------------- how sure a number is (miratrade/stats.py)
     "no cases": "sin casos",
     "{value} (between {low} and {high})": "{value} (entre {low} y {high})",

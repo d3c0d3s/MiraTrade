@@ -21,6 +21,10 @@ web = ["fastapi>=0.115", "uvicorn[standard]>=0.30", "joserfc>=1.0", "httpx>=0.27
 # they are an extra, not a dependency, because this is the one part that must come out before
 # MiraTrade is sold to anyone. See docs/DATA.md.
 congress = ["pdfplumber>=0.11"]
+# FinBERT over the prose of an 8-K. ONNX rather than torch: ~250 MB against ~2.5 GB for a
+# 110M-parameter classifier that runs on a CPU in milliseconds. Off by default in settings —
+# no news signal here has survived an out-of-sample test. See miratrade/news/sentiment.py.
+news = ["optimum[onnxruntime]>=1.20", "transformers>=4.40"]
 dev = ["pytest>=7", "pytest-qt>=4", "pdfplumber>=0.11"]
 
 [project.scripts]

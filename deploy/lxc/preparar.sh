@@ -56,6 +56,26 @@ EOF
 chmod 640 /etc/miratrade.env
 chown root:"$USER_NAME" /etc/miratrade.env
 
+# FinBERT, opcional. Pesa: ONNX Runtime y el tokenizador son ~250 MB, y el modelo ~440 MB más, que
+# se descarga la primera vez que alguien lo enciende. Se instala aparte porque el ajuste viene
+# APAGADO y la aplicación arranca perfectamente sin él — un servidor que no levanta porque falta un
+# fichero de 440 MB es peor fallo que una puntuación ausente.
+if [ "${WITH_NEWS:-1}" = "1" ]; then
+  echo "== FinBERT (extra news) =="
+  sudo -u "$USER_NAME" "$HOME_DIR/venv/bin/pip" install --quiet -e "$HOME_DIR/src[news]"
+  # Descargar el modelo ahora, con la consola delante, en vez de la primera vez que alguien pulse
+  # el interruptor desde el móvil y se quede mirando una pantalla quieta cuatro minutos.
+  install -d -o "$USER_NAME" -g "$USER_NAME" "$HOME_DIR/models"
+  sudo -u "$USER_NAME" HF_HOME="$HOME_DIR/models" "$HOME_DIR/venv/bin/python" - <<'PY' ||     echo "  el modelo no se pudo descargar ahora; se bajará al encenderlo"
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+name = "ProsusAI/finbert"
+AutoTokenizer.from_pretrained(name)
+AutoModelForSequenceClassification.from_pretrained(name)
+print("  modelo en cache")
+PY
+  echo "HF_HOME=$HOME_DIR/models" >> /etc/miratrade.env
+fi
+
 echo
 echo "Listo. Falta, en este orden:"
 echo "  1. Editar MIRATRADE_SEC_UA en /etc/miratrade.env con un correo real."

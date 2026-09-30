@@ -35,7 +35,7 @@ from miratrade.config import APP_DIR, Config, load_user_config
 #   trade, options, liquidity        what contract, and its exits
 #   sentiment                        FinBERT over the headlines (shown, not measured)
 USER_SECTIONS = ("risk", "broker", "data", "ui", "notify",
-                 "insider", "flow", "smart", "trade", "options", "liquidity")
+                 "insider", "flow", "smart", "trade", "options", "liquidity", "sentiment")
 JSON_PATH = APP_DIR / "settings.json"
 IMPORTED = "settings_imported_from"          # a note in `meta`, so the import happens once
 
