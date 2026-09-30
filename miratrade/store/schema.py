@@ -21,7 +21,7 @@ writes that second app.
 """
 from __future__ import annotations
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 # Ordinary tables, created in this order.
 TABLES: dict[str, str] = {
@@ -66,6 +66,25 @@ TABLES: dict[str, str] = {
             events      INTEGER,
             note        TEXT,
             UNIQUE (kind, fingerprint)
+        )""",
+    # 8-K items: corporate news that cannot be back-dated. An EDGAR filing is immutable, so the
+    # 8-K filed on 2023-04-11 has the same bytes today and a correction arrives as an 8-K/A, a new
+    # filing with its own date. That is the property no news feed offers, and it is why the news
+    # work starts here. See miratrade/news/filings.py.
+    #
+    # One row per ITEM rather than per filing: a filing carries several, the question asked of this
+    # data is always "was there a 5.02 near this day", and counting becomes a GROUP BY instead of
+    # string matching.
+    "filings": """
+        CREATE TABLE IF NOT EXISTS filings (
+            accession   TEXT NOT NULL,   -- SEC accession number: identifies the filing
+            ticker      TEXT NOT NULL,
+            item        TEXT NOT NULL,   -- 8-K item code, e.g. 5.02
+            form        TEXT NOT NULL,   -- 8-K or 8-K/A
+            filing_date TEXT NOT NULL,   -- when it became public: the only date a backtest may use
+            accepted_at TEXT,            -- to the second, so "filed after the close" is answerable
+            report_date TEXT,            -- when the company says the event happened
+            PRIMARY KEY (accession, ticker, item)
         )""",
     # Which days (or tickers) have already been downloaded per source, so a run fetches only the
     # gaps. A row means "asked and answered", including an answer of nothing at all — without that

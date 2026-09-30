@@ -60,6 +60,8 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
     4: (),
     # …and version 6 the `attempts` table, the same way.
     5: (),
+    # Version 7 adds `filings` (8-K items). Another table, so another empty step.
+    6: (),
 }
 
 

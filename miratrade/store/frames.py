@@ -25,6 +25,7 @@ DATE_COLUMNS: dict[str, tuple[str, ...]] = {
     "option_flow": ("date", "expiry"),
     "congress_trades": ("filing_date", "trade_date"),
     "events": ("signal_date",),
+    "filings": ("filing_date", "report_date"),
     "earnings": ("report_date", "fiscal_end"),
     "coverage": ("day",),
 }
