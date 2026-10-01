@@ -218,7 +218,11 @@ def test_sec_downloads_run_in_parallel_without_exceeding_the_budget(tmp_path):
 
     def grab(_):
         session = c.session
-        gate.wait(timeout=5)                               # hold all three threads at once
+        # Generous on purpose. The barrier is here to force three threads to exist at once, not to
+        # measure how fast they get there — and with the whole suite running, five seconds is a
+        # coin flip. A test that fails because the machine was busy teaches people to ignore
+        # failures, which costs more than the thing it was checking.
+        gate.wait(timeout=60)
         return session
 
     with ThreadPoolExecutor(max_workers=3) as pool:
