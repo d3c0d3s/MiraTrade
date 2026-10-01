@@ -336,6 +336,39 @@ def cmd_serve(a) -> None:
     serve(host=a.host, port=a.port)
 
 
+def cmd_quality(a) -> None:
+    """Does a condition earn its place? Split in time, against a base rate, corrected."""
+    from miratrade import quality
+    from miratrade.report import latest_report_frames
+    from miratrade.scan import DEFAULT_VARIANT, load_history
+
+    history, _rules = (load_history(Path(a.report)) if a.report
+                       else latest_report_frames(Path("reports")))
+    if not len(history):
+        raise SystemExit("No report with events.csv. Run `miratrade analyze --offline` first.")
+    verdicts = quality.judge(history, a.variant or DEFAULT_VARIANT, min_n=a.min_events)
+    if not verdicts:
+        raise SystemExit("No condition had enough events to judge.")
+
+    rows = quality.table(verdicts)
+    days = pd.to_datetime(history["signal_date"], errors="coerce").dropna()
+    print(f"{len(history):,} events, {days.min().date()} to {days.max().date()}" if len(days)
+          else f"{len(history):,} events")
+    print(f"first 60 % discover, last 40 % confirm · {len(verdicts)} conditions tested "
+          f"-> corrected alpha {verdicts[0].alpha:.4f}\n")
+    print(f"{'condition':<24}{'n':>6}{'rate':>7}{'interval':>13}{'base':>7}"
+          f"{'x early':>9}{'x late':>8}")
+    for _, r in rows.iterrows():
+        mark = " SURVIVES" if r["survives"] else (" WORSE" if r["harmful"] else "")
+        print(f"{r['condition']:<24}{r['n']:>6}{r['rate'] * 100:>6.0f}%"
+              f"{f'{r.low * 100:.0f}-{r.high * 100:.0f}%':>13}{r['base'] * 100:>6.0f}%"
+              f"{r['lift_early']:>9.2f}{r['lift_late']:>8.2f}{mark}")
+    print()
+    for v in verdicts:
+        print(" ", v.say())
+    print("\n" + quality.verdict_line(verdicts))
+
+
 def cmd_demo(a) -> None:
     from miratrade.synthetic import make_market
 
@@ -424,6 +457,14 @@ def main(argv: list[str] | None = None) -> None:
     sv.add_argument("--host", default="127.0.0.1")
     sv.add_argument("--port", type=int, default=8787)
     sv.set_defaults(func=cmd_serve)
+
+    ql = sub.add_parser("quality", help="does a condition earn its place? Split in time, against "
+                                        "a base rate, corrected for multiple testing")
+    ql.add_argument("--report", help="report folder (default: the newest with events.csv)")
+    ql.add_argument("--variant", default=None, help="outcome profile, e.g. call45_40")
+    ql.add_argument("--min-events", type=int, default=30,
+                    help="fewest events a condition needs before it is judged at all")
+    ql.set_defaults(func=cmd_quality)
 
     de = sub.add_parser("demo", help="run the full pipeline on synthetic data with a planted edge")
     de.add_argument("--out", default="reports/demo")
