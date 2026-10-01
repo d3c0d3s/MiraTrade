@@ -67,7 +67,8 @@ ROUTINE = frozenset({"9.01", "5.07"})
 SEVERE = frozenset({"1.03", "2.06", "3.01", "4.01", "4.02", "5.01", "5.02"})
 
 SOURCE = "sec_8k"                       # its name in the coverage table
-COLUMNS = ["accession", "ticker", "item", "form", "filing_date", "accepted_at", "report_date"]
+COLUMNS = ["accession", "ticker", "item", "form", "filing_date", "accepted_at", "report_date",
+           "cik", "document"]
 
 
 def label(item: str, translate=None) -> str:
@@ -92,6 +93,10 @@ def parse_submissions(payload: dict | bytes | str, ticker: str = "",
     if isinstance(payload, (bytes, str)):
         payload = json.loads(payload)
     ticker = (ticker or (payload.get("tickers") or [""])[0] or "").strip().upper()
+    # The archive path is keyed on the issuer's CIK, and the body lives under the primary
+    # document's filename. Without both, the table says a document exists and gives no way to open
+    # it — a reference with no referent.
+    cik = str(payload.get("cik") or "").lstrip("0")
     recent = (payload.get("filings") or {}).get("recent") or {}
     got = recent.get("form") or []
     rows = []
@@ -111,7 +116,9 @@ def parse_submissions(payload: dict | bytes | str, ticker: str = "",
             rows.append({"accession": accession, "ticker": ticker, "item": code.split()[0],
                          "form": form, "filing_date": filed,
                          "accepted_at": field("acceptanceDateTime", None) or None,
-                         "report_date": field("reportDate", None) or None})
+                         "report_date": field("reportDate", None) or None,
+                         "cik": cik or None,
+                         "document": field("primaryDocument", None) or None})
     return pd.DataFrame(rows, columns=COLUMNS)
 
 
@@ -166,6 +173,14 @@ def harvest_cache(db, cache_dir: Path | None = None,
 
 
 SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:0>10}.json"
+# The body of a filing. Accession numbers are dashed in the index and undashed in the path, which
+# is a detail that costs an afternoon the first time you meet it.
+BODY_URL = "https://www.sec.gov/Archives/edgar/data/{cik}/{plain}/{document}"
+
+
+def body_url(cik: str, accession: str, document: str) -> str:
+    return BODY_URL.format(cik=str(cik).lstrip("0"), plain=str(accession).replace("-", ""),
+                           document=document)
 
 
 def fetch(tickers, ciks: dict, client=None, db=None, log: Callable[[str], None] = print,

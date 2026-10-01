@@ -247,3 +247,50 @@ def test_a_reader_still_opens_a_wal_database_whose_shm_is_gone(tmp_path):
     reader = connect(path, read_only=True)
     assert len(read(reader, "insiders")) == 1
     reader.close()
+
+
+def test_adding_a_column_twice_is_not_an_error(tmp_path):
+    """The trap this project documented at version 2 and walked into anyway at version 8.
+
+    `schema.py` describes the table as it is TODAY and `migrate` runs that DDL first, so a database
+    that never had the table gets it already carrying the new columns — and a bare ALTER then dies
+    with "duplicate column name" on a file that was perfectly fine. A step that can be skipped when
+    it is unnecessary is the shape that does not have the problem.
+    """
+    import sqlite3
+
+    from miratrade.store.db import _step
+
+    conn = sqlite3.connect(tmp_path / "x.db")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE t (a TEXT)")
+
+    _step(conn, ("+column", "t", "b", "TEXT"))
+    _step(conn, ("+column", "t", "b", "TEXT"))        # again: must not raise
+    assert {r["name"] for r in conn.execute("PRAGMA table_info(t)")} == {"a", "b"}
+
+    _step(conn, "ALTER TABLE t ADD COLUMN c TEXT")    # plain SQL still works
+    assert "c" in {r["name"] for r in conn.execute("PRAGMA table_info(t)")}
+
+    with pytest.raises(ValueError, match="unknown migration step"):
+        _step(conn, ("+index", "t", "b", "TEXT"))
+    conn.close()
+
+
+def test_a_database_from_every_old_version_reaches_the_newest(tmp_path):
+    """Not just v1: each step has to survive being reached from wherever a file happens to be."""
+    import sqlite3
+
+    from miratrade.store import db as store_db
+
+    for start in range(1, store_db.SCHEMA_VERSION):
+        path = tmp_path / f"v{start}.db"
+        raw = sqlite3.connect(path)
+        raw.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        raw.execute("INSERT INTO meta VALUES ('schema_version', ?)", (str(start),))
+        raw.commit()
+        raw.close()
+
+        conn = connect(path)
+        assert version(conn) == store_db.SCHEMA_VERSION, f"desde v{start}"
+        conn.close()

@@ -17,7 +17,8 @@ from miratrade.news import filings
 
 def _payload(ticker="ACME", cik="0000012345", rows=(), files=()):
     """An EDGAR submissions response, shaped the way the real one is."""
-    keys = ("accessionNumber", "filingDate", "reportDate", "acceptanceDateTime", "form", "items")
+    keys = ("accessionNumber", "filingDate", "reportDate", "acceptanceDateTime", "form", "items",
+            "primaryDocument")
     recent = {k: [r.get(k, "") for r in rows] for k in keys}
     return {"cik": cik, "tickers": [ticker, f"{ticker}-PA"], "name": f"{ticker} CORP",
             "filings": {"recent": recent, "files": list(files)}}
@@ -26,10 +27,10 @@ def _payload(ticker="ACME", cik="0000012345", rows=(), files=()):
 ONE = _payload(rows=[
     {"accessionNumber": "0000012345-26-000001", "filingDate": "2026-09-10",
      "reportDate": "2026-09-09", "acceptanceDateTime": "2026-09-10T20:13:03.000Z",
-     "form": "8-K", "items": "5.02,9.01"},
+     "form": "8-K", "items": "5.02,9.01", "primaryDocument": "acme-20260910.htm"},
     {"accessionNumber": "0000012345-26-000002", "filingDate": "2026-09-20",
      "reportDate": "2026-09-18", "acceptanceDateTime": "2026-09-20T13:02:00.000Z",
-     "form": "8-K", "items": "3.02,1.01,9.01"},
+     "form": "8-K", "items": "3.02,1.01,9.01", "primaryDocument": "acme-20260920.htm"},
     {"accessionNumber": "0000012345-26-000003", "filingDate": "2026-09-22",
      "reportDate": "2026-09-22", "acceptanceDateTime": "2026-09-22T12:00:00.000Z",
      "form": "10-Q", "items": ""},
@@ -199,3 +200,23 @@ def test_fetch_asks_only_for_what_is_missing_and_says_what_it_could_not_resolve(
     assert len(calls) == 1 and "0000012345" in calls[0]
     assert out["items"] == 5 and out["missing"] == ["NOCIK"]
     assert filings.have(db, ["ACME"])[0] == {"ACME"}
+
+
+def test_the_body_of_a_filing_is_reachable_from_what_is_stored(db):
+    """Without the CIK and the document name the table says a document exists and gives no way to
+    open it, which is the worst of both: a reference with no referent."""
+    rows = filings.parse_submissions(ONE)
+    one = rows.iloc[0]
+    assert one["cik"] == "12345" and one["document"]
+
+    url = filings.body_url(one["cik"], one["accession"], one["document"])
+    assert url.startswith("https://www.sec.gov/Archives/edgar/data/12345/")
+    # the accession is dashed in the index and undashed in the path, which costs an afternoon the
+    # first time you meet it
+    assert "000001234526000001" in url and "-" not in url.rsplit("/", 2)[-2]
+
+
+def test_both_columns_survive_the_round_trip(db):
+    store.write(db, "filings", filings.parse_submissions(ONE))
+    back = store.read(db, "filings", "item = ?", ("5.02",)).iloc[0]
+    assert back["cik"] == "12345" and str(back["document"]).endswith(".htm")

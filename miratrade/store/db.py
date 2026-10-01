@@ -53,13 +53,27 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
     # option_flow gains bid and ask. The chain always had them: `chain_to_flow` used them to work out
     # the mid and then dropped them, which threw away the spread — the number that decides whether a
     # contract can be traded at all, and how much of a profit target the round trip eats.
-    3: ("ALTER TABLE option_flow ADD COLUMN bid REAL",
-        "ALTER TABLE option_flow ADD COLUMN ask REAL"),
+    # Same shape as step 7, and for the same reason — found by a test that upgrades from EVERY old
+    # version rather than only from the first. A file sitting at v3 never had `option_flow`
+    # rebuilt by step 1, so the DDL created it already carrying bid and ask, and this died.
+    3: (("+column", "option_flow", "bid", "REAL"),
+        ("+column", "option_flow", "ask", "REAL")),
     # Version 5 only adds the `settings` table, which the DDL above creates on its own. The version
     # still steps, because a reader has to know whether the file it opened can hold settings at all.
     4: (),
     # …and version 6 the `attempts` table, the same way.
     5: (),
+    # Version 7 added `filings`; this adds the two columns that make a filing's BODY reachable.
+    # Without them the table says a document exists and gives no way to open it, which is the
+    # worst of both: a reference with no referent.
+    6: (),
+    # ADD_COLUMN, not a bare ALTER. The DDL in `schema.py` describes the table as it is TODAY, and
+    # `migrate` runs it first — so a database that never had `filings` gets it already carrying
+    # these columns, and the ALTER then dies with "duplicate column name". The project documented
+    # this trap at version 2 and I walked into it anyway at version 8; a migration that can be
+    # skipped when it is unnecessary is the shape that does not have the problem.
+    7: (("+column", "filings", "cik", "TEXT"),
+        ("+column", "filings", "document", "TEXT")),
     # Version 7 adds `filings` (8-K items). Another table, so another empty step.
     6: (),
 }
@@ -134,13 +148,32 @@ def migrate(conn: sqlite3.Connection) -> int:
             conn.execute(ddl)
         while found and found < SCHEMA_VERSION:
             for statement in MIGRATIONS.get(found, ()):
-                conn.execute(statement)
+                _step(conn, statement)
             found += 1
         _set(conn, "schema_version", str(SCHEMA_VERSION))
         _set(conn, "written_by", "MiraTrade")
         if not _get(conn, "created_at"):
             _set(conn, "created_at", now())
     return SCHEMA_VERSION
+
+
+def _step(conn: sqlite3.Connection, statement) -> None:
+    """One migration step: plain SQL, or a tuple describing something to do only if needed.
+
+    ``("+column", table, name, type)`` adds a column unless it is already there. It has to be
+    skippable because the DDL in ``schema.py`` describes today's shape and runs first: a database
+    that never had the table gets it already complete, and a bare ALTER then fails on a file that
+    was perfectly fine.
+    """
+    if isinstance(statement, str):
+        conn.execute(statement)
+        return
+    kind, table, name, column_type = statement
+    if kind != "+column":
+        raise ValueError(f"unknown migration step {kind!r}")
+    existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+    if name not in existing:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {column_type}")
 
 
 def now() -> str:

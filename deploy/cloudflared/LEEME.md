@@ -1,33 +1,68 @@
 # Túnel y acceso
 
-Se ejecuta **dentro del contenedor**, como root.
+cloudflared **ya está instalado** en el CT `150253` (`192.168.150.253`). No hay que instalar nada:
+hay que añadir un destino al túnel que ya funciona y poner una política delante.
 
-```bash
-curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg \
-  | tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
-echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main" \
-  > /etc/apt/sources.list.d/cloudflared.list
-apt-get update -qq && apt-get install -y cloudflared
+El registro DNS de `miratrade.srv.miratechcloud.com` ya existe, así que tampoco hace falta
+`cloudflared tunnel route dns`.
 
-cloudflared tunnel login                 # abre una URL: autorízala en tu cuenta
-cloudflared tunnel create miratrade      # anota el UUID que imprime
-cloudflared tunnel route dns miratrade miratrade.miratechcloud.com
+## El orden importa
 
-install -d -m 700 /etc/cloudflared
-# copia config.yml ajustado con el UUID y el dominio
-cloudflared service install
-systemctl enable --now cloudflared
+**La política de Access va antes que el ingress.** Al revés, hay una ventana —minutos u horas, lo
+que se tarde en volver— en la que ese hostname sirve la base de datos entera a internet.
+
+### 1. La política
+
+Cloudflare Zero Trust → Access → Applications → Add → Self-hosted:
+
+- Dominio: `miratrade.srv.miratechcloud.com`
+- Política: *Allow*, por tu correo, o por el grupo de tu IdP si ya hay Authentik o Entra detrás
+- Guardar y copiar el **Application Audience (AUD) Tag**
+
+Esos dos valores van a `/etc/miratrade.env` del CT 150210:
+
+```
+MIRATRADE_ACCESS_TEAM=<el de <equipo>.cloudflareaccess.com>
+MIRATRADE_ACCESS_AUD=<el AUD tag>
 ```
 
-## Lo que no se puede saltar
+La API **verifica la firma** de ese token: comprueba que lo firma una clave que Cloudflare publica
+para tu equipo, que la audiencia es la de esta aplicación —un token de otra de tus apps no abre
+esta— y que no ha caducado. La cabecera por sí sola no prueba nada; cualquiera puede mandar una
+cabecera.
 
-**Pon Cloudflare Access delante antes de publicar el DNS.** Zero Trust → Access → Applications →
-Self-hosted, el hostname de arriba, política *Allow* por tu correo.
+### 2. El ingress, en el CT 150253
 
-La API no tiene autenticación propia, a propósito: media autenticación sería peor que ninguna,
-porque alguien se fiaría de ella. Sin Access, ese hostname es la base de datos entera en internet.
+En `/etc/cloudflared/config.yml`, **antes** de la regla final `http_status:404`:
+
+```yaml
+  - hostname: miratrade.srv.miratechcloud.com
+    service: http://192.168.150.210:8787
+    originRequest:
+      connectTimeout: 30s
+```
+
+```bash
+cloudflared tunnel ingress validate
+systemctl restart cloudflared
+```
+
+La regla final tiene que seguir siendo la última: sin ella cloudflared no arranca, y con ella en
+otro sitio un hostname mal escrito acabaría sirviendo algo que nadie quería servir.
+
+## Comprobarlo
+
+```bash
+# desde el CT del túnel: responde
+curl -fsS http://192.168.150.210:8787/api/health
+
+# desde fuera, sin pasar por Access: debe ser 403, no la página
+curl -s -o /dev/null -w '%{http_code}\n' https://miratrade.srv.miratechcloud.com/api/health
+```
+
+Si lo segundo devuelve 200, la política no está puesta.
 
 ## Lo que no pasa por el túnel
 
-Nada que toque credenciales de bróker. Eso se hace desde dentro de la red, por la VPN de UniFi.
-La web no envía órdenes (`miratrade/web/__init__.py`) y no debe empezar a hacerlo por esta vía.
+Nada que toque credenciales de bróker. Eso se hace desde dentro de la red, por la VPN de UniFi. La
+web no envía órdenes (`miratrade/web/__init__.py`) y no debe empezar a hacerlo por esta vía.

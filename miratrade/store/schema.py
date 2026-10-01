@@ -21,7 +21,7 @@ writes that second app.
 """
 from __future__ import annotations
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 # Ordinary tables, created in this order.
 TABLES: dict[str, str] = {
@@ -84,6 +84,8 @@ TABLES: dict[str, str] = {
             filing_date TEXT NOT NULL,   -- when it became public: the only date a backtest may use
             accepted_at TEXT,            -- to the second, so "filed after the close" is answerable
             report_date TEXT,            -- when the company says the event happened
+            cik         TEXT,            -- the issuer, which is what the archive path is keyed on
+            document    TEXT,            -- the primary document's filename, so the body is fetchable
             PRIMARY KEY (accession, ticker, item)
         )""",
     # Which days (or tickers) have already been downloaded per source, so a run fetches only the
