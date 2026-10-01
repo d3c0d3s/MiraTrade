@@ -125,6 +125,11 @@ def _source(source: str | None) -> str:
         source = load_user_config().data.price_source
     if source not in SOURCES:
         raise ValueError(f"Unknown price source {source!r}: use one of {', '.join(SOURCES)}")
+    # Before anything is fetched, not after. A licence checked once the data is already on disk is
+    # a licence that was already broken.
+    from miratrade import usage
+
+    usage.check("research_prices" if source == "research" else "broker_prices")
     return source
 
 

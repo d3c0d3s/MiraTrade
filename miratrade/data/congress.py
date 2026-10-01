@@ -106,8 +106,14 @@ def fetch_members(opener: Callable | None = None, log: Callable[[str], None] = p
 
 
 def update_members(db=None, opener: Callable | None = None, log: Callable[[str], None] = print) -> int:
-    """Refresh ``congress_members`` in the market database. Returns how many members were written."""
-    from miratrade import store
+    """Refresh ``congress_members`` in the market database. Returns how many members were written.
+
+    Refuses outside personal use: these filings stop being personal the moment somebody else reads
+    them (5 U.S.C. app. § 105(c)), which is why feedback mode is out too, not only commercial.
+    """
+    from miratrade import store, usage
+
+    usage.check("congress")
 
     owned, db = db is None, db if db is not None else store.connect()
     try:

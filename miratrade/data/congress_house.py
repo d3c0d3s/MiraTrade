@@ -213,6 +213,10 @@ def fetch_trades(start: date, end: date, db=None, cache_dir: Path | None = None,
     run only picks up filings that are new. A scan with no readable text is marked too, otherwise it
     would be downloaded again for ever.
     """
+    from miratrade import usage
+
+    usage.check("congress")
+
     from miratrade import store
     from miratrade.data.congress import match_member, member_lookup
 

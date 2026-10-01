@@ -202,7 +202,14 @@ OPERATION_GROUPS: tuple[Group, ...] = (
 
     Group("Data", "Where prices come from and how far back to fetch. The source matters legally as "
                   "well as practically — see docs/LICENCIAS.md.",
-          (Field("data", "price_source", "Price source", "«Your account» uses your own broker data, "
+          (Field("data", "usage_mode", "Who this copy is for",
+                 "A licensing question, not a feature one. Outside «only me» the congressional "
+                 "disclosures and the public-website prices stop being allowed, and the restricted "
+                 "sources refuse rather than quietly carry on. See docs/LICENCIAS.md.",
+                 kind="choice", choices=(("personal", "Only me"),
+                                         ("feedback", "A few invited people"),
+                                         ("commercial", "Subscribers"))),
+           Field("data", "price_source", "Price source", "«Your account» uses your own broker data, "
                  "which its terms allow for you. «Public websites» is Yahoo and Stooq, whose terms "
                  "allow personal, non-commercial use at most.",
                  kind="choice", choices=(("schwab", "Your Schwab account"),

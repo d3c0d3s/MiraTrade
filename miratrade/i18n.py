@@ -787,6 +787,21 @@ ES: dict[str, str] = {
         "Máximo del objetivo que puede comerse la ida y vuelta",
     "The backtest charged no spread. If getting in and out costs a third of what you were aiming for, the edge it measured was never there to take.":
         "El backtest no cobró spread. Si entrar y salir cuesta un tercio de lo que buscabas, la ventaja que midió nunca estuvo ahí para cogerla.",
+    # ------------------------------------------------- para quién es esta copia (miratrade/usage.py)
+    "Who this copy is for": "Para quién es esta copia",
+    "A licensing question, not a feature one. Outside «only me» the congressional disclosures and "
+    "the public-website prices stop being allowed, and the restricted sources refuse rather than "
+    "quietly carry on. See docs/LICENCIAS.md.":
+        "Es una cuestión de licencias, no de funciones. Fuera de «solo yo», las declaraciones del "
+        "Congreso y los precios de webs públicas dejan de estar permitidos, y las fuentes "
+        "restringidas se niegan en vez de seguir en silencio. Ver docs/LICENCIAS.md.",
+    "Only me": "Solo yo",
+    "A few invited people": "Unas pocas personas invitadas",
+    "Subscribers": "Suscriptores",
+    "{what} cannot be used in «{mode}» mode: {because} See docs/LICENCIAS.md. To use it, set the "
+    "usage mode back to «personal».":
+        "{what} no se puede usar en modo «{mode}»: {because} Ver docs/LICENCIAS.md. Para usarlo, "
+        "vuelve a poner el modo de uso en «personal».",
     # ------------------------------------------------- FinBERT (miratrade/news/sentiment.py)
     "News (FinBERT)": "Noticias (FinBERT)",
     "Reads the prose of an 8-K and says whether it is worded positively or negatively. It is OFF "

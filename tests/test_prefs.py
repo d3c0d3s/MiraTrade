@@ -187,3 +187,90 @@ def test_a_database_it_cannot_read_still_draws_the_screen(tmp_path):
 
     state = freshness.check(Broken(), now=date(2026, 9, 25))
     assert state.never and state.rows == 0                 # an answer, not an exception
+
+
+# --------------------------------------------------------------------------- who this copy is for
+
+def test_restricted_sources_refuse_rather_than_quietly_carry_on():
+    """A mode that merely hid the congressional screen would leave the data flowing into the
+    events, the emails and the backtest with nobody noticing."""
+    from miratrade import usage
+    from miratrade.config import Config
+
+    personal = Config()
+    usage.check("congress", personal)                    # allowed: no exception
+    usage.check("research_prices", personal)
+
+    for mode in ("feedback", "commercial"):
+        cfg = Config()
+        cfg.data.usage_mode = mode
+        for source in ("congress", "research_prices"):
+            with pytest.raises(usage.NotAllowedHere):
+                usage.check(source, cfg)
+
+
+def test_the_refusal_says_which_mode_and_where_to_read_why():
+    from miratrade import usage
+
+    said = usage.why_not("congress", "commercial")
+    assert "commercial" in said and "105(c)" in said and "LICENCIAS" in said
+
+
+def test_broker_prices_are_fine_for_a_few_people_and_not_for_subscribers():
+    """An individual developer key covers the account holder's own use; serving subscribers needs
+    a vendor agreement. Those are different lines and the modes keep them apart."""
+    from miratrade import usage
+
+    assert usage.allows("broker_prices", "feedback")
+    assert not usage.allows("broker_prices", "commercial")
+    assert not usage.allows("congress", "feedback")      # this one stops one step earlier
+
+
+def test_an_unrecognised_mode_reads_as_the_strictest_not_the_loosest():
+    """A typo that silently granted commercial rights would be the one failure this prevents."""
+    from miratrade import usage
+    from miratrade.config import Config
+
+    cfg = Config()
+    for nonsense in ("", "comercial", "COMMERICAL", None, "anything"):
+        cfg.data.usage_mode = nonsense
+        assert usage.mode(cfg) == "personal"
+
+
+def test_a_contradiction_is_reported_before_anything_tries_to_fetch():
+    """Switching to commercial with Yahoo still selected is a mistake somebody makes once. Finding
+    out at three in the morning when a scheduled download raises is worse than on the settings
+    page."""
+    from miratrade import usage
+    from miratrade.config import Config
+
+    cfg = Config()
+    cfg.data.usage_mode = "commercial"
+    cfg.data.price_source = "research"
+    found = usage.conflicts(cfg)
+    assert found and "public websites" in found[0]
+
+    cfg.data.price_source = "schwab"
+    assert usage.conflicts(cfg) == []
+
+
+def test_the_price_source_asks_before_it_fetches(monkeypatch):
+    """Checked before anything is downloaded, not after. A licence checked once the data is on
+    disk is a licence that was already broken."""
+    from miratrade import usage
+    from miratrade.config import Config
+    from miratrade.data.prices import _source
+
+    cfg = Config()
+    cfg.data.usage_mode = "commercial"
+    monkeypatch.setattr("miratrade.config.load_user_config", lambda *a, **k: cfg)
+    with pytest.raises(usage.NotAllowedHere, match="public websites"):
+        _source("research")
+
+
+def test_the_mode_is_offered_in_the_settings_with_its_reason():
+    from miratrade import params
+
+    field = next(f for g in params.OPERATION_GROUPS for f in g.fields if f.key == "usage_mode")
+    assert {v for v, _ in field.choices} == set(("personal", "feedback", "commercial"))
+    assert "LICENCIAS" in field.help

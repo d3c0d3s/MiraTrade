@@ -257,6 +257,9 @@ class UiParams:
 class DataParams:
     """Where market data comes from. Every user connects their OWN broker account, under that
     broker's personal-use API terms; MiraTrade never redistributes one user's data to another."""
+    # Who this copy is for. It is a licensing question, not a feature one: the restricted sources
+    # ask before they fetch and refuse. See miratrade/usage.py and docs/LICENCIAS.md.
+    usage_mode: str = "personal"        # personal | feedback | commercial
     price_source: str = "schwab"        # daily history: "schwab" | "research" (see below)
     quote_broker: str = "schwab"        # live quotes and option chains: "schwab" | "etrade"
     cap_tier: str = "all"               # company size to keep, a key of CAP_TIERS

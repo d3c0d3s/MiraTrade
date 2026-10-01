@@ -70,6 +70,29 @@ gestiona la red local. `deploy/LEEME.md` tiene lo que ya está decidido.
 
 ---
 
+## El modo de uso: hecho (2026-09-30)
+
+Ya no es un documento. `miratrade/usage.py` lo impone: las fuentes restringidas **preguntan antes
+de descargar** y se niegan. `data.usage_mode` está en el formulario de Ajustes, con sus tres
+opciones y su porqué.
+
+| Modo | Prohíbe |
+|---|---|
+| **personal** | nada |
+| **feedback** | congresistas, precios de webs públicas, clave gratuita de Alpha Vantage |
+| **commercial** | lo anterior **más** los precios de tu propia cuenta de bróker |
+
+Dos decisiones que merecen quedar escritas:
+
+- **Un modo irreconocible se lee como `personal`**, el más estricto. Un error de escritura que
+  concediera derechos comerciales en silencio sería el único fallo que esto existe para evitar.
+- **Los conflictos se avisan en Ajustes**, no al descargar. Pasar a comercial con Yahoo todavía
+  seleccionado es un error que se comete una vez; enterarse a las tres de la mañana porque una
+  descarga programada falla es peor que enterarse en la pantalla.
+
+Lo que **no** resuelve: sigue sin ser asesoramiento legal, y no sustituye al abogado que
+`LICENCIAS.md` marca como necesario antes de que nadie pague.
+
 ## La app de escritorio
 
 **Estado: en funcionamiento, y va a desaparecer.**
