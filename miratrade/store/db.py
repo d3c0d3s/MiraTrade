@@ -74,6 +74,8 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
     # skipped when it is unnecessary is the shape that does not have the problem.
     7: (("+column", "filings", "cik", "TEXT"),
         ("+column", "filings", "document", "TEXT")),
+    # Version 9 only adds `filing_sentiment`, which the DDL creates on its own.
+    8: (),
     # Version 7 adds `filings` (8-K items). Another table, so another empty step.
     6: (),
 }

@@ -234,6 +234,50 @@ El registro DNS ya existe, así que no hace falta `tunnel route dns`.
 
 ---
 
+## 6 · Opcional: puntuar los 8-K con FinBERT
+
+Nada de esto hace falta para que MiraTrade funcione. Es una medición pendiente, y el ajuste viene
+apagado precisamente porque todavía no ha dado nada.
+
+```bash
+pct exec 150210 -- sudo -u miratrade /opt/miratrade/venv/bin/python -X utf8   -m miratrade.cli news status
+```
+
+Dice cuántas presentaciones haría falta puntuar. **Son unas 20.000**, y esa cifra sorprende: 2.900
+están alrededor de eventos y el resto alrededor de los días placebo. Sin ese segundo lado no hay
+comparación, y una tasa sin nada contra lo que medirse solo puede darse la razón a sí misma — que
+es exactamente como salió mal la primera versión de este estudio.
+
+Para encenderlo y puntuar:
+
+```bash
+# el ajuste vive en la base de datos, no en un fichero
+pct exec 150210 -- sudo -u miratrade /opt/miratrade/venv/bin/python -X utf8   -m miratrade.cli store settings --set sentiment.enabled=true
+
+# una prueba corta primero, para ver que el modelo carga
+pct exec 150210 -- sudo -u miratrade /opt/miratrade/venv/bin/python -X utf8   -m miratrade.cli news score --limit 50
+
+# y luego todo. Son horas de CPU; se puede interrumpir y continúa donde iba.
+pct exec 150210 -- sudo -u miratrade /opt/miratrade/venv/bin/python -X utf8   -m miratrade.cli news score
+```
+
+La descarga va a ~7 documentos/s dentro del presupuesto del SEC, y la mediana de prosa utilizable
+por documento es de **323 palabras** — medido sobre los 2.899 que ya se bajaron, con 0 fallos y 0
+documentos que fueran solo formulario.
+
+Después:
+
+```bash
+pct exec 150210 -- sudo -u miratrade /opt/miratrade/venv/bin/python -X utf8   -m miratrade.cli news study
+```
+
+Compara la redacción alrededor de los eventos con la de días placebo **en la misma fase del
+trimestre**, y parte la ventana en dos para ver si lo que aparece en la primera mitad sigue ahí en
+la segunda. Sin ese control, cualquier puntuación de sentimiento redescubre la ventana en la que
+los directivos pueden comprar, disfrazada de noticia: es lo que pasó con los códigos de item.
+
+---
+
 ## Comprobaciones finales
 
 ```bash

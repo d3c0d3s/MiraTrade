@@ -21,7 +21,7 @@ writes that second app.
 """
 from __future__ import annotations
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 # Ordinary tables, created in this order.
 TABLES: dict[str, str] = {
@@ -87,6 +87,25 @@ TABLES: dict[str, str] = {
             cik         TEXT,            -- the issuer, which is what the archive path is keyed on
             document    TEXT,            -- the primary document's filename, so the body is fetchable
             PRIMARY KEY (accession, ticker, item)
+        )""",
+    # What FinBERT made of one filing's prose. The score is stored and the text is not: the text
+    # is EDGAR's and re-fetching it is free, while re-scoring 3,000 documents is minutes of CPU.
+    #
+    # `settings` records which configuration produced the row, because a score read months later
+    # under different thresholds is a number whose meaning nobody can reconstruct.
+    "filing_sentiment": """
+        CREATE TABLE IF NOT EXISTS filing_sentiment (
+            accession   TEXT NOT NULL,
+            ticker      TEXT NOT NULL,
+            filing_date TEXT NOT NULL,
+            label       TEXT NOT NULL,   -- positive | negative | neutral | unclear
+            score       REAL,            -- −1 … +1, positive minus negative
+            confidence  REAL,
+            passages    INTEGER,         -- how many sentences survived the boilerplate filter
+            model       TEXT NOT NULL,
+            settings    TEXT,            -- JSON of the thresholds that produced this
+            scored_at   TEXT NOT NULL,
+            PRIMARY KEY (accession, model)
         )""",
     # Which days (or tickers) have already been downloaded per source, so a run fetches only the
     # gaps. A row means "asked and answered", including an answer of nothing at all — without that

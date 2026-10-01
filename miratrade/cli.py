@@ -441,6 +441,9 @@ def main(argv: list[str] | None = None) -> None:
     from miratrade.earnings_cli import add_parser as add_earnings
     add_earnings(sub)
 
+    from miratrade.news_cli import add_parser as add_news
+    add_news(sub)
+
     from miratrade.schedule_cli import add_parser as add_schedule
     add_schedule(sub)
 
